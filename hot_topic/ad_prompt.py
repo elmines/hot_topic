@@ -9,19 +9,16 @@ from multiprocessing import Pool, cpu_count
 import re
 import sys
 import time
-import torch
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from pathlib import Path
 from uuid import uuid4
 
+from openai import AsyncOpenAI
 from tqdm import tqdm
-from vllm import AsyncLLMEngine, SamplingParams
 from vllm.config import DeviceConfig, ModelConfig, VllmConfig
-from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.exceptions import VLLMValidationError
 from vllm.renderers import ChatParams, BaseRenderer, renderer_from_config
-
-from .vllm_utils import make_structured_outputs_params, make_ans_extraction
-
 
 MAX_LINES_PER_REQUEST = 300
 CHUNK_OVERLAP = 24
@@ -248,35 +245,39 @@ def transcript_chunks(rows, renderer, max_model_len, max_new_tokens, path):
     return chunks
 
 
-async def generate_text(engine, prompt, sampling_params, request_id):
-    final_output = None
-
-    async for output in engine.generate(prompt, sampling_params, request_id):
-        final_output = output
-        completion = output.outputs[0]
-    if final_output is None:
-        raise RuntimeError(f"no output received for request {request_id}")
-    completion = final_output.outputs[0]
-    return completion.text
+async def generate_text(client, model, chunk, max_new_tokens, request_id):
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": USER_PROMPT + format_transcript(chunk)},
+        ],
+        temperature=0.0,
+        max_tokens=max_new_tokens,
+    )
+    if not response.choices or response.choices[0].message.content is None:
+        warning(Path(request_id), "LLM response was empty")
+        return ""
+    return response.choices[0].message.content
 
 async def label_transcript(
-    engine, renderer: BaseRenderer, input_path, sampling_params,
-    extract_answer, max_model_len, max_new_tokens,
+    client, model, renderer: BaseRenderer, input_path, max_new_tokens,
+    extract_answer, max_model_len,
 ):
     rows = read_transcript(input_path)
     all_spans = []
     chunks = transcript_chunks(
         rows, renderer, max_model_len, max_new_tokens, input_path
     ) if rows else []
-    rendered_prompts = [rendered_prompt for _, _, rendered_prompt in chunks]
     requests = [
         generate_text(
-            engine,
-            rendered_prompt,
-            sampling_params,
+            client,
+            model,
+            chunk,
+            max_new_tokens,
             f"{input_path.name}-{uuid4()}",
         )
-        for rendered_prompt in rendered_prompts
+        for _, chunk, _ in chunks
     ]
     responses = await asyncio.gather(*requests)
     for (offset, chunk, _), response in zip(chunks, responses):
@@ -317,6 +318,41 @@ def make_renderer(args):
         device_config=DeviceConfig(device="cpu"),
     )
     return renderer_from_config(config)
+
+
+def server_request(base_url, path, api_key):
+    request = Request(
+        f"{base_url.rstrip('/')}/{path.lstrip('/')}",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    try:
+        with urlopen(request) as response:
+            return json.load(response)
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise RuntimeError(f"could not request {request.full_url}: {exc}") from exc
+
+
+def server_model(base_url, api_key):
+    response = server_request(base_url, "/v1/models", api_key)
+    try:
+        model = response["data"][0]["id"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError("vLLM /v1/models response did not contain a model") from exc
+    return model
+
+
+def server_max_model_len(base_url, api_key):
+    response = server_request(base_url, "/server_info", api_key)
+    for key in ("max_model_len", "max_seq_len"):
+        value = response.get(key) if isinstance(response, dict) else None
+        if isinstance(value, int):
+            return value
+
+    config = response.get("vllm_config") if isinstance(response, dict) else None
+    match = re.search(r"(?:max_model_len|max_seq_len)=(\d+)", str(config))
+    if match:
+        return int(match.group(1))
+    raise RuntimeError("vLLM /server_info response did not contain max_model_len")
 
 
 _ESTIMATE_RENDERER = None
@@ -379,40 +415,29 @@ def estimate_token_lengths(args, input_files):
 
 
 async def run(args, input_files, output_dir):
-    tensor_parallel_size = args.tensor_parallel_size
-    engine_args = AsyncEngineArgs(
-        model=args.model,
-        max_model_len=args.max_model_len,
-        max_num_seqs=args.max_num_seqs,
-        max_num_batched_tokens=args.max_num_batched_tokens,
-        gpu_memory_utilization=args.gpu_memory_utilization,
-        tensor_parallel_size=tensor_parallel_size
+    client = AsyncOpenAI(
+        base_url=f"http://{args.host}:{args.port}/v1",
+        api_key=args.api_key,
     )
-    engine = AsyncLLMEngine.from_engine_args(engine_args)
-    sampling_params = SamplingParams(
-        temperature=0.0,
-        max_tokens=args.max_new_tokens,
+    model = args.model
+    renderer = make_renderer(
+        argparse.Namespace(model=model, max_model_len=args.max_model_len)
+    )
+    extract_answer = lambda text: text
 
-        # structured_outputs=make_structured_outputs_params(
-        #     args.model,
-        #     json_schema=AD_SPAN_SCHEMA,
-        #     reasoning=False
-        # ),
-    )
-    extract_answer = make_ans_extraction(args.model)
     async def process(path):
         destination = output_path(args.root.resolve(), output_dir, path)
         if destination.exists():
             print(f"Skipping transcript {path}: output already exists at {destination}")
             return 0
         result = await label_transcript(
-            engine,
-            engine.renderer,
+            client,
+            model,
+            renderer,
             path,
-            sampling_params,
+            args.max_new_tokens,
             extract_answer,
             args.max_model_len,
-            args.max_new_tokens,
         )
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("w", encoding="utf-8") as stream:
@@ -429,9 +454,8 @@ async def run(args, input_files, output_dir):
             progress.update(1)
     duration += time.time()
 
-    device_names = ' '.join(torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count()))
-    print("n_transcribed", "duration", "devices", "devices_used", sep=',')
-    print(n_transcribed, duration, device_names, tensor_parallel_size, sep=',')
+    print("n_transcribed", "duration", sep=',')
+    print(n_transcribed, duration, sep=',')
 
 
 def main(raw_args=None):
@@ -442,13 +466,10 @@ def main(raw_args=None):
                         help="Root directory under which every --input file must be found")
     parser.add_argument("-o", "--output", default=Path("out/ad_spans"), type=Path,
                         help="Directory for JSON outputs, mirroring --root")
-    parser.add_argument("--model", default="openai/gpt-oss-120b")
-    parser.add_argument("--max-model-len", type=int, default=1 << 14)
-    parser.add_argument("--max-num-batched-tokens", type=int, default=1 << 13)
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--api-key", default="derf")
     parser.add_argument("--max-new-tokens", type=int, default=1 << 11)
-    parser.add_argument("--max-num-seqs", type=int, default=1)
-    parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
-    parser.add_argument("--tensor-parallel-size", type=int, default=torch.cuda.device_count())
     parser.add_argument(
         "--num-workers",
         type=int,
@@ -462,12 +483,8 @@ def main(raw_args=None):
     )
     args = parser.parse_args(raw_args)
 
-    if args.max_model_len < 1 or args.max_new_tokens < 1 or args.max_num_seqs < 1 or args.num_workers < 1:
-        parser.error("model length, token count, sequence count, and worker count must be positive")
-    if args.max_model_len <= args.max_new_tokens:
-        parser.error("--max-model-len must be greater than --max-new-tokens")
-    if not 0 < args.gpu_memory_utilization <= 1:
-        parser.error("--gpu-memory-utilization must be in (0, 1]")
+    if args.max_new_tokens < 1 or args.num_workers < 1 or not 1 <= args.port <= 65535:
+        parser.error("token count, worker count, and port must be valid positive values")
 
     root = args.root.resolve()
     if not root.is_dir():
@@ -479,6 +496,15 @@ def main(raw_args=None):
         input_files = input_paths(root, args.inputs)
     except ValueError as exc:
         parser.error(str(exc))
+
+    args.max_model_len = server_max_model_len(
+        f"http://{args.host}:{args.port}", args.api_key
+    )
+    args.model = server_model(
+        f"http://{args.host}:{args.port}", args.api_key
+    )
+    if args.max_model_len <= args.max_new_tokens:
+        parser.error("server max_model_len must be greater than --max-new-tokens")
 
     if args.estimate_tokens:
         estimate_token_lengths(args, input_files)
