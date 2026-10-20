@@ -5,6 +5,7 @@ import asyncio
 import csv
 import json
 from collections import Counter
+import logging
 from multiprocessing import Pool, cpu_count
 import re
 import sys
@@ -20,8 +21,19 @@ from vllm.config import DeviceConfig, ModelConfig, VllmConfig
 from vllm.exceptions import VLLMValidationError
 from vllm.renderers import ChatParams, BaseRenderer, renderer_from_config
 
+logger = logging.getLogger(__name__)
+
 MAX_LINES_PER_REQUEST = 300
 CHUNK_OVERLAP = 24
+REASONING_EFFORT_CHOICES = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+)
 
 AD_SPAN_SCHEMA = {
     "type": "object",
@@ -32,7 +44,7 @@ AD_SPAN_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "start": {"type": "integer", "minimum": 0},
-                    "end": {"type": "integer", "minimum": 1},
+                    "end": {"type": "integer", "minimum": 0},
                     "reason": {"type": "string"},
                 },
                 "required": ["start", "end"],
@@ -46,15 +58,13 @@ AD_SPAN_SCHEMA = {
 
 SYSTEM_PROMPT = """You identify advertising in podcast transcripts.
 
-Reasoning: low
-
 Return one JSON object matching the provided schema, with a `spans` array. Each span must contain integer `start` and `end` fields and may contain a short `reason` field.
-Spans use half-open intervals: `start` is inclusive and `end` is exclusive. Indices refer to the 0-based line numbers supplied in the transcript.
+Spans use closed intervals: `start` and `end` are both inclusive. Indices refer to the 0-based line numbers supplied in the transcript.
 """
 
 USER_PROMPT = """Read the transcript below and identify every contiguous range of transcript lines that is advertising. Include sponsor reads, product or service promotions, affiliate messages, fundraising or membership appeals, and promotions for the podcast or its network. Do not label ordinary discussion of a product, news, or a guest's work unless it is promotional.
 
-Return JSON matching the schema. Use half-open spans: `start` is the first advertising line and `end` is one past the last advertising line. For example, {"start": 0, "end": 3} labels lines 0, 1, and 2.
+Return JSON matching the schema. Use closed spans: `start` is the first advertising line and `end` is the last advertising line. For example, {"start": 0, "end": 2} labels lines 0, 1, and 2.
 
 Use the supplied line indices exactly. If there is no advertising, return {"spans": []}. Do not include any text outside the JSON object.
 
@@ -149,8 +159,14 @@ def validate_spans(payload, line_count, offset, path):
             warning(path, f"Malformed span: {span!r}")
             continue
         start, end = span["start"], span["end"]
-        if not lower <= start < end <= upper:
-            warning(path, f"Span {span!r} is outside half-open line range [{lower}, {upper})")
+        if not lower <= start <= end:
+            warning(path, f"Span {span!r} has an invalid closed line range")
+            continue
+        if end >= upper:
+            warning(path, f"Span {span!r} extends past the chunk; truncating its end to {upper - 1}")
+            end = upper - 1
+        if end < start:
+            warning(path, f"Span {span!r} has no lines in the chunk")
             continue
         validated.append({"start": start + offset, "end": end + offset, "reason": str(span.get("reason", ""))})
     return validated
@@ -159,7 +175,7 @@ def validate_spans(payload, line_count, offset, path):
 def merge_spans(spans):
     merged = []
     for span in sorted(spans, key=lambda item: (item["start"], item["end"])):
-        if merged and span["start"] <= merged[-1]["end"]:
+        if merged and span["start"] <= merged[-1]["end"] + 1:
             merged[-1]["end"] = max(merged[-1]["end"], span["end"])
             if span.get("reason") and span["reason"] not in merged[-1].get("reason", ""):
                 merged[-1]["reason"] = f"{merged[-1].get('reason', '')}; {span['reason']}".strip("; ")
@@ -245,7 +261,14 @@ def transcript_chunks(rows, renderer, max_model_len, max_new_tokens, path):
     return chunks
 
 
-async def generate_text(client, model, chunk, max_new_tokens, request_id):
+async def generate_text(
+    client: AsyncOpenAI,
+    model,
+    chunk,
+    max_new_tokens,
+    reasoning_effort,
+    request_id,
+):
     response = await client.chat.completions.create(
         model=model,
         messages=[
@@ -254,33 +277,82 @@ async def generate_text(client, model, chunk, max_new_tokens, request_id):
         ],
         temperature=0.0,
         max_tokens=max_new_tokens,
+        reasoning_effort=reasoning_effort,
     )
     if not response.choices or response.choices[0].message.content is None:
         warning(Path(request_id), "LLM response was empty")
         return ""
     return response.choices[0].message.content
 
+
+async def generate_chunk_responses(
+    client, model, offset, chunk, max_new_tokens, reasoning_effort, transcript_path
+):
+    response = await generate_text(
+        client,
+        model,
+        chunk,
+        max_new_tokens,
+        reasoning_effort,
+        f"chunk-{offset}-{uuid4()}",
+    )
+    if response.strip() or len(chunk) < 2:
+        return [(offset, chunk, response)]
+
+    midpoint = len(chunk) // 2
+    logger.warning(
+        "Splitting empty-response chunk for transcript %s at line %d",
+        transcript_path,
+        offset + midpoint,
+    )
+    left, right = await asyncio.gather(
+        generate_chunk_responses(
+            client,
+            model,
+            offset,
+            chunk[:midpoint],
+            max_new_tokens,
+            reasoning_effort,
+            transcript_path,
+        ),
+        generate_chunk_responses(
+            client,
+            model,
+            offset + midpoint,
+            chunk[midpoint:],
+            max_new_tokens,
+            reasoning_effort,
+            transcript_path,
+        ),
+    )
+    return left + right
+
 async def label_transcript(
     client, model, renderer: BaseRenderer, input_path, max_new_tokens,
-    extract_answer, max_model_len,
+    reasoning_effort, extract_answer, max_model_len,
 ):
     rows = read_transcript(input_path)
     all_spans = []
     chunks = transcript_chunks(
         rows, renderer, max_model_len, max_new_tokens, input_path
     ) if rows else []
-    requests = [
-        generate_text(
+    responses = await asyncio.gather(*(
+        generate_chunk_responses(
             client,
             model,
+            offset,
             chunk,
             max_new_tokens,
-            f"{input_path.name}-{uuid4()}",
+            reasoning_effort,
+            input_path,
         )
-        for _, chunk, _ in chunks
-    ]
-    responses = await asyncio.gather(*requests)
-    for (offset, chunk, _), response in zip(chunks, responses):
+        for offset, chunk, _ in chunks
+    ))
+    for offset, chunk, response in (
+        result
+        for chunk_results in responses
+        for result in chunk_results
+    ):
         payload = extract_json_object(response, input_path, extract_answer)
         all_spans.extend(validate_spans(payload, len(chunk), offset, input_path))
     return {
@@ -436,6 +508,7 @@ async def run(args, input_files, output_dir):
             renderer,
             path,
             args.max_new_tokens,
+            args.reasoning_effort,
             extract_answer,
             args.max_model_len,
         )
@@ -470,6 +543,12 @@ def main(raw_args=None):
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--api-key", default="derf")
     parser.add_argument("--max-new-tokens", type=int, default=1 << 11)
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=REASONING_EFFORT_CHOICES,
+        default="low",
+        help="Reasoning effort passed to the vLLM chat completion",
+    )
     parser.add_argument(
         "--num-workers",
         type=int,
