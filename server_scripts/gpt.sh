@@ -3,8 +3,8 @@
 # Need that dev mode to get the /server_info endpoint to get the maximum model length
 model=openai/gpt-oss-120b
 
-exec env VLLM_SERVER_DEV_MODE=1 uv run vllm serve \
-    $model \
+$RUN_PREFIX env VLLM_SERVER_DEV_MODE=1 uv run vllm serve \
+    "$model" \
     --host 0.0.0.0 \
     --port 8000 \
     --api-key derf \

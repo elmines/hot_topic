@@ -120,7 +120,7 @@ cleanup() {{
 trap cleanup EXIT
 
 vllm_log_path={shell_quote(repo_dir)}/slurm_scripts/$SLURM_JOB_NAME.$SLURM_JOB_ID.vllm.log
-server_scripts/gpt.sh >$vllm_log_path 2>&1 &
+RUN_PREFIX="exec" server_scripts/gpt.sh >$vllm_log_path 2>&1 &
 server_pid=$!
 echo Writing vllm output to $vllm_log_path
 

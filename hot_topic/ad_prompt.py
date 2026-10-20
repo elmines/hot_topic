@@ -15,7 +15,13 @@ from urllib.request import Request, urlopen
 from pathlib import Path
 from uuid import uuid4
 
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncOpenAI,
+    InternalServerError,
+    RateLimitError,
+)
 from tqdm import tqdm
 from vllm.config import DeviceConfig, ModelConfig, VllmConfig
 from vllm.exceptions import VLLMValidationError
@@ -269,17 +275,30 @@ async def generate_text(
     max_new_tokens,
     reasoning_effort,
     request_id,
+    request_semaphore=None,
 ):
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[
+    request = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_PROMPT + format_transcript(chunk)},
         ],
-        temperature=0.0,
-        max_tokens=max_new_tokens,
-        reasoning_effort=reasoning_effort,
-    )
+        "temperature": 0.0,
+        "max_tokens": max_new_tokens,
+        "reasoning_effort": reasoning_effort,
+    }
+    for attempt in range(6):
+        try:
+            if request_semaphore is None:
+                response = await client.chat.completions.create(**request)
+            else:
+                async with request_semaphore:
+                    response = await client.chat.completions.create(**request)
+            break
+        except (APIConnectionError, APITimeoutError, InternalServerError, RateLimitError):
+            if attempt == 5:
+                raise
+            await asyncio.sleep(min(60, 2 ** attempt))
     if not response.choices or response.choices[0].message.content is None:
         warning(Path(request_id), "LLM response was empty")
         return ""
@@ -287,9 +306,16 @@ async def generate_text(
 
 
 async def generate_chunk_responses(
-    client, model, offset, chunk, max_new_tokens, reasoning_effort, transcript_path
+    client,
+    model,
+    offset,
+    chunk,
+    max_new_tokens,
+    reasoning_effort,
+    transcript_path,
+    request_semaphore=None,
 ):
-    response = await generate_text(
+    request_args = (
         client,
         model,
         chunk,
@@ -297,6 +323,12 @@ async def generate_chunk_responses(
         reasoning_effort,
         f"chunk-{offset}-{uuid4()}",
     )
+    if request_semaphore is None:
+        response = await generate_text(*request_args)
+    else:
+        response = await generate_text(
+            *request_args, request_semaphore=request_semaphore
+        )
     if response.strip() or len(chunk) < 2:
         return [(offset, chunk, response)]
 
@@ -315,6 +347,7 @@ async def generate_chunk_responses(
             max_new_tokens,
             reasoning_effort,
             transcript_path,
+            request_semaphore,
         ),
         generate_chunk_responses(
             client,
@@ -324,13 +357,14 @@ async def generate_chunk_responses(
             max_new_tokens,
             reasoning_effort,
             transcript_path,
+            request_semaphore,
         ),
     )
     return left + right
 
 async def label_transcript(
     client, model, renderer: BaseRenderer, input_path, max_new_tokens,
-    reasoning_effort, extract_answer, max_model_len,
+    reasoning_effort, extract_answer, max_model_len, request_semaphore=None,
 ):
     rows = read_transcript(input_path)
     all_spans = []
@@ -346,6 +380,7 @@ async def label_transcript(
             max_new_tokens,
             reasoning_effort,
             input_path,
+            request_semaphore,
         )
         for offset, chunk, _ in chunks
     ))
@@ -374,6 +409,13 @@ def input_paths(root, inputs):
             raise ValueError(f"--input file does not exist: {path}")
         paths.append(path)
     return paths
+
+
+def episode_batches(input_files, episode_batch):
+    return [
+        input_files[start:start + episode_batch]
+        for start in range(0, len(input_files), episode_batch)
+    ]
 
 
 def output_path(root, output_dir, input_path):
@@ -502,7 +544,10 @@ async def run(args, input_files, output_dir):
     client = AsyncOpenAI(
         base_url=f"http://{args.host}:{args.port}/v1",
         api_key=args.api_key,
+        timeout=900.0,
+        max_retries=0,
     )
+    request_semaphore = asyncio.Semaphore(64)
     model = args.model
     renderer = make_renderer(
         argparse.Namespace(model=model, max_model_len=args.max_model_len)
@@ -523,6 +568,7 @@ async def run(args, input_files, output_dir):
             args.reasoning_effort,
             extract_answer,
             args.max_model_len,
+            request_semaphore,
         )
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("w", encoding="utf-8") as stream:
@@ -532,11 +578,12 @@ async def run(args, input_files, output_dir):
 
     n_transcribed = 0
     duration = -time.time()
-    tasks = [asyncio.create_task(process(path)) for path in input_files]
-    with tqdm(total=len(tasks), desc="Writing transcripts") as progress:
-        for task in asyncio.as_completed(tasks):
-            n_transcribed += await task
-            progress.update(1)
+    with tqdm(total=len(input_files), desc="Writing transcripts") as progress:
+        for batch_files in episode_batches(input_files, args.episode_batch):
+            tasks = [asyncio.create_task(process(path)) for path in batch_files]
+            for task in asyncio.as_completed(tasks):
+                n_transcribed += await task
+                progress.update(1)
     duration += time.time()
 
     print("n_transcribed", "duration", sep=',')
@@ -568,14 +615,27 @@ def main(raw_args=None):
         help="Worker processes for CPU-side transcript preparation",
     )
     parser.add_argument(
+        "--episode-batch",
+        type=int,
+        default=8,
+        help="Number of episodes to process concurrently before starting the next batch",
+    )
+    parser.add_argument(
         "--estimate-tokens",
         action="store_true",
         help="Count prompt lengths without creating an LLM engine",
     )
     args = parser.parse_args(raw_args)
 
-    if args.max_new_tokens < 1 or args.num_workers < 1 or not 1 <= args.port <= 65535:
-        parser.error("token count, worker count, and port must be valid positive values")
+    if (
+        args.max_new_tokens < 1
+        or args.num_workers < 1
+        or args.episode_batch < 1
+        or not 1 <= args.port <= 65535
+    ):
+        parser.error(
+            "token count, worker count, episode batch, and port must be valid positive values"
+        )
 
     root = args.root.resolve()
     if not root.is_dir():
