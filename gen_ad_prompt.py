@@ -11,8 +11,8 @@ import stat
 
 # Recent N-worker set of jobs
 # took 5 hours a piece for 1615+ transcripts each
-FILES_PER_HOUR = 1615 / 5.5
-# 150
+# FILES_PER_HOUR = 1615 / 5.5
+FILES_PER_HOUR = 1615 / 7.5
 
 
 def shell_quote(value):
@@ -119,7 +119,7 @@ cleanup() {{
 }}
 trap cleanup EXIT
 
-vllm_log_path="$script_dir/$SLURM_JOB_NAME.$SLURM_JOB_ID.vllm.log"
+vllm_log_path={shell_quote(repo_dir)}/slurm_scripts/$SLURM_JOB_NAME.$SLURM_JOB_ID.vllm.log
 server_scripts/gpt.sh >$vllm_log_path 2>&1 &
 server_pid=$!
 echo Writing vllm output to $vllm_log_path
