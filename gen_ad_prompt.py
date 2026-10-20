@@ -79,7 +79,6 @@ def build_script(repo_dir, root, output, duration, partition, email, input_paths
             shell_quote(root),
             "--output",
             shell_quote(output),
-            "--max-num-seqs", "16",
             "-i",
             *(shell_quote(path) for path in input_paths),
         ]
@@ -107,8 +106,23 @@ export XDG_RUNTIME_DIR=$SLURM_TMPDIR
 echo CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
 date
 hostname
+script_dir=$(realpath $(dirname $0))
 cd {shell_quote(repo_dir)}
 pwd
+
+server_pid=""
+cleanup() {{
+    if [[ -n "$server_pid" ]]; then
+        kill "$server_pid" 2>/dev/null || true
+        wait "$server_pid" 2>/dev/null || true
+    fi
+}}
+trap cleanup EXIT
+
+vllm_log_path="$script_dir/$SLURM_JOB_NAME.$SLURM_JOB_ID.vllm.log"
+server_scripts/gpt.sh >$vllm_log_path 2>&1 &
+server_pid=$!
+echo Writing vllm output to $vllm_log_path
 
 {command_str}
 """

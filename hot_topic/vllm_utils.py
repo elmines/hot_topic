@@ -1,10 +1,42 @@
 import copy
+import time
 import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from typing import Optional
 
 from vllm.sampling_params import StructuredOutputsParams
 from xgrammar import get_model_structural_tag
 from xgrammar.structural_tag import GrammarFormat, RegexFormat, JSONSchemaFormat
+
+
+def is_vllm_server_ready(
+    host: str,
+    port: int,
+    *,
+    api_key: Optional[str] = None,
+    timeout: float = 1.0,
+) -> bool:
+    """Return whether the vLLM health endpoint reports that the server is ready."""
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    request = Request(f"http://{host}:{port}/health", headers=headers)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return response.status == 200
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return False
+
+def wait_for_vllm_server(host, port, *, api_key=None, timeout=300):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if is_vllm_server_ready(host, port, api_key=api_key):
+            return
+        time.sleep(1)
+    raise RuntimeError(
+        f"vLLM server at {host}:{port} was not ready after {timeout} seconds"
+    )
+
+
 
 def make_structured_outputs_params(model_name: str,
                                     *,

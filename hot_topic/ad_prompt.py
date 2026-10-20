@@ -20,6 +20,7 @@ from tqdm import tqdm
 from vllm.config import DeviceConfig, ModelConfig, VllmConfig
 from vllm.exceptions import VLLMValidationError
 from vllm.renderers import ChatParams, BaseRenderer, renderer_from_config
+from hot_topic.vllm_utils import wait_for_vllm_server
 
 logger = logging.getLogger(__name__)
 
@@ -392,16 +393,27 @@ def make_renderer(args):
     return renderer_from_config(config)
 
 
-def server_request(base_url, path, api_key):
+def server_request(base_url, path, api_key, *, attempts=30, retry_delay=2):
     request = Request(
         f"{base_url.rstrip('/')}/{path.lstrip('/')}",
         headers={"Authorization": f"Bearer {api_key}"},
     )
-    try:
-        with urlopen(request) as response:
-            return json.load(response)
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise RuntimeError(f"could not request {request.full_url}: {exc}") from exc
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            with urlopen(request, timeout=10) as response:
+                return json.load(response)
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code not in {429, 500, 502, 503, 504}:
+                break
+        except (URLError, TimeoutError) as exc:
+            last_error = exc
+        if attempt + 1 < attempts:
+            time.sleep(retry_delay)
+    raise RuntimeError(
+        f"could not request {request.full_url} after {attempts} attempts: {last_error}"
+    ) from last_error
 
 
 def server_model(base_url, api_key):
@@ -576,6 +588,7 @@ def main(raw_args=None):
     except ValueError as exc:
         parser.error(str(exc))
 
+    wait_for_vllm_server(args.host, args.port, api_key=args.api_key)
     args.max_model_len = server_max_model_len(
         f"http://{args.host}:{args.port}", args.api_key
     )
