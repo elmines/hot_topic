@@ -546,7 +546,7 @@ def main(raw_args=None):
     parser.add_argument(
         "--reasoning-effort",
         choices=REASONING_EFFORT_CHOICES,
-        default="low",
+        default="medium",
         help="Reasoning effort passed to the vLLM chat completion",
     )
     parser.add_argument(
