@@ -78,21 +78,6 @@ Use the supplied line indices exactly. If there is no advertising, return {"span
 TRANSCRIPT:
 """
 
-_SPAN_FIELDS = (
-    r'(?=[^{}]*"start"\s*:\s*(?P<start>\d+))'
-    r'(?=[^{}]*"end"\s*:\s*(?P<end>\d+))'
-    r'(?=[^{}]*"reason"\s*:\s*"(?P<reason>(?:\\.|[^"\\])*?)")?'
-)
-_SPAN_PATTERN = re.compile(r"\{" + _SPAN_FIELDS + r"[^{}]*\}")
-_ORPHAN_SPAN_PATTERN = re.compile(
-    r"\{"
-    r'(?=[^{}]*"start"\s*:\s*(?P<start>\d+))'
-    r'(?=[^{}]*"end"\s*:\s*(?P<end>\d+))'
-    r'(?=[^{}]*"reason"\s*:\s*"(?P<reason>(?:\\.|[^"\\])*?)")?'
-    r"[^{}]*$"
-)
-
-
 def read_transcript(path):
     with path.open(newline="", encoding="utf-8") as source:
         reader = csv.DictReader(source)
@@ -112,7 +97,7 @@ def warning(path, message):
     print(f"{path.name}: Warning: {message}", file=sys.stderr)
 
 
-def extract_json_object(text, path, extract_answer):
+def parse_json_object(text, extract_answer):
     text = extract_answer(text)
     decoder = json.JSONDecoder()
     for match in re.finditer(r"\{", text):
@@ -120,38 +105,9 @@ def extract_json_object(text, path, extract_answer):
             value, _ = decoder.raw_decode(text[match.start():])
         except json.JSONDecodeError:
             continue
-        if isinstance(value, dict) and "spans" in value:
-            return value
-
-    spans = [
-        {
-            "start": int(match.group("start")),
-            "end": int(match.group("end")),
-            "reason": (
-                json.loads(f'"{match.group("reason")}"')
-                if match.group("reason") is not None
-                else ""
-            ),
-        }
-        for match in _SPAN_PATTERN.finditer(text)
-    ]
-
-    orphan_match = _ORPHAN_SPAN_PATTERN.search(text)
-    if orphan_match:
-        spans.append({
-            "start": int(orphan_match.group("start")),
-            "end": int(orphan_match.group("end")),
-            "reason": (
-                json.loads(f'"{orphan_match.group("reason")}"')
-                if orphan_match.group("reason") is not None
-                else ""
-            ),
-        })
-    if spans:
-        return {"spans": spans}
-
-    warning(path, f"LLM response did not contain a spans JSON object: {text[:500]!r}")
-    return {"spans": []}
+        if isinstance(value, dict):
+            return value if "spans" in value else {"spans": []}
+    return None
 
 
 def validate_spans(payload, line_count, offset, path):
@@ -313,6 +269,7 @@ async def generate_chunk_responses(
     max_new_tokens,
     reasoning_effort,
     transcript_path,
+    extract_answer=lambda text: text,
     request_semaphore=None,
 ):
     request_args = (
@@ -329,12 +286,26 @@ async def generate_chunk_responses(
         response = await generate_text(
             *request_args, request_semaphore=request_semaphore
         )
-    if response.strip() or len(chunk) < 2:
-        return [(offset, chunk, response)]
+    response = response.strip()
+    payload = parse_json_object(response, extract_answer)
+
+    if payload is not None:
+        return [(offset, chunk, payload)]
+
+    split_reason = "empty-response" if not response else "invalid-JSON"
+    if len(chunk) < 2:
+        logger.warning(
+            "%s for 1-line chunk from transcript %s at line %d",
+            split_reason,
+            transcript_path,
+            offset
+        )
+        return []
 
     midpoint = len(chunk) // 2
     logger.warning(
-        "Splitting empty-response chunk for transcript %s at line %d",
+        "Splitting %s chunk for transcript %s at line %d",
+        split_reason,
         transcript_path,
         offset + midpoint,
     )
@@ -347,6 +318,7 @@ async def generate_chunk_responses(
             max_new_tokens,
             reasoning_effort,
             transcript_path,
+            extract_answer,
             request_semaphore,
         ),
         generate_chunk_responses(
@@ -357,6 +329,7 @@ async def generate_chunk_responses(
             max_new_tokens,
             reasoning_effort,
             transcript_path,
+            extract_answer,
             request_semaphore,
         ),
     )
@@ -380,16 +353,16 @@ async def label_transcript(
             max_new_tokens,
             reasoning_effort,
             input_path,
+            extract_answer,
             request_semaphore,
         )
         for offset, chunk, _ in chunks
     ))
-    for offset, chunk, response in (
+    for offset, chunk, payload in (
         result
         for chunk_results in responses
         for result in chunk_results
     ):
-        payload = extract_json_object(response, input_path, extract_answer)
         all_spans.extend(validate_spans(payload, len(chunk), offset, input_path))
     return {
         "source": str(input_path),
