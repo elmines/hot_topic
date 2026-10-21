@@ -12,7 +12,7 @@ import stat
 # Recent N-worker set of jobs
 # took 5 hours a piece for 1615+ transcripts each
 # FILES_PER_HOUR = 1615 / 5.5
-FILES_PER_HOUR = 1615 / 7.5
+FILES_PER_HOUR = 1615 / 7
 
 
 def shell_quote(value):
@@ -67,7 +67,7 @@ def format_duration(hours):
     return f"{hours}:{minutes:02d}:{seconds:02d}"
 
 
-def build_script(repo_dir, root, output, duration, partition, email, input_paths, job_number):
+def build_script(repo_dir, root, output, duration, partition, email, input_paths, job_number, port_number):
     if input_paths:
         command = [
             "uv",
@@ -75,6 +75,8 @@ def build_script(repo_dir, root, output, duration, partition, email, input_paths
             "python",
             "-m",
             "hot_topic.ad_prompt",
+            "--port",
+            str(port_number),
             "--root",
             shell_quote(root),
             "--output",
@@ -95,7 +97,7 @@ def build_script(repo_dir, root, output, duration, partition, email, input_paths
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
-#SBATCH --mem=16gb
+#SBATCH --mem=32gb
 #SBATCH --mail-user={shell_quote(email)}
 #SBATCH --mail-type=BEGIN,FAIL,END
 #SBATCH --output=%x.%j.out
@@ -120,7 +122,7 @@ cleanup() {{
 trap cleanup EXIT
 
 vllm_log_path={shell_quote(repo_dir)}/slurm_scripts/$SLURM_JOB_NAME.$SLURM_JOB_ID.vllm.log
-RUN_PREFIX="exec" server_scripts/gpt.sh >$vllm_log_path 2>&1 &
+RUN_PREFIX="exec" API_PORT={port_number} server_scripts/gpt.sh >$vllm_log_path 2>&1 &
 server_pid=$!
 echo Writing vllm output to $vllm_log_path
 
@@ -150,6 +152,7 @@ def main():
     slurm_dir.mkdir(parents=True, exist_ok=True)
 
     for job_number, bucket in enumerate(buckets, start=1):
+        port_number = 21699 + job_number
         script_path = slurm_dir / f"ad_prompt_{job_number:03d}_of_{args.n:03d}.sh"
         script = build_script(
             repo_dir,
@@ -160,6 +163,7 @@ def main():
             config["email"],
             bucket["files"],
             job_number,
+            port_number
         )
         write_code(script_path, script)
         print(f"Job {job_number:03d}: {len(bucket['files'])} files, {bucket['bytes']} bytes")
