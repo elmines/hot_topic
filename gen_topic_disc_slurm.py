@@ -33,7 +33,7 @@ def load_config(repo_dir):
 		return json.load(handle)
 
 
-def build_script(repo_dir, duration, partition, email, model, gres):
+def build_script(repo_dir, duration, partition, email, model, gres, port):
 	commands = [
 		" \\\n\t".join(
 		[
@@ -44,8 +44,10 @@ def build_script(repo_dir, duration, partition, email, model, gres):
 			"hot_topic.gen",
 			"-i",
 			shell_quote(repo_dir / "out" / "resegmented"),
-			"--model",
-			shell_quote(model),
+			"--ad-spans",
+			shell_quote(repo_dir / "out" / "ad_spans"),
+			"--port",
+			str(port),
 		]
 		),
 	]
@@ -74,6 +76,20 @@ hostname
 cd {shell_quote(repo_dir)}
 pwd
 
+server_pid=""
+cleanup() {{
+    if [[ -n "$server_pid" ]]; then
+        kill "$server_pid" 2>/dev/null || true
+        wait "$server_pid" 2>/dev/null || true
+    fi
+}}
+trap cleanup EXIT
+
+vllm_log_path={shell_quote(repo_dir)}/slurm_scripts/$SLURM_JOB_NAME.$SLURM_JOB_ID.vllm.log
+MODEL={shell_quote(model)} RUN_PREFIX="exec" API_PORT={port} server_scripts/gpt.sh >$vllm_log_path 2>&1 &
+server_pid=$!
+echo Writing vllm output to $vllm_log_path
+
 {command_str}
 """
 
@@ -85,7 +101,7 @@ def main():
 		"rtx": config["rtx_partition"],
 		"b200": config["b200_partition"],
 	}
-	for duration, model, partition_name, gres in JOBS:
+	for job_number, (duration, model, partition_name, gres) in enumerate(JOBS, start=1):
 		model_dir_name = model.replace("/", "--")
 		script_path = repo_dir / "slurm_scripts" / f"topic_disc_{model_dir_name}.sh"
 		script_path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,6 +113,7 @@ def main():
 			config["email"],
 			model,
 			gres,
+			23100 + job_number,
 		)
 		write_code(script_path, script)
 		print(f"Wrote script to: {script_path}")
