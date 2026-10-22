@@ -176,8 +176,6 @@ def drop_ad_span_lines(rows, spans, path=None):
     for span in spans:
         if (
             not isinstance(span, dict)
-            or isinstance(span.get("start"), bool)
-            or isinstance(span.get("end"), bool)
             or not isinstance(span.get("start"), int)
             or not isinstance(span.get("end"), int)
         ):
