@@ -12,7 +12,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from hot_topic.llm_utils import (
+from .llm_utils import (
     REQUEST_CONCURRENCY,
     add_token_estimate_arguments,
     add_vllm_client_arguments,

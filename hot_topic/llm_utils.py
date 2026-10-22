@@ -42,7 +42,7 @@ REASONING_EFFORT_CHOICES = (
 
 def add_vllm_client_arguments(parser):
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8001)
     parser.add_argument("--api-key", default="derf")
     parser.add_argument("--max-new-tokens", type=int, default=1 << 11)
     parser.add_argument(
