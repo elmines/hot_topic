@@ -37,4 +37,5 @@ explicit = true
 [dependency-groups]
 dev = [
     "line-profiler>=5.0.2",
+    "py-spy>=0.4.2",
 ]

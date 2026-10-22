@@ -378,6 +378,7 @@ async def run(args, file_names, topic_to_desc, topic_str, write_topics, write_qu
 
 
 def main(raw_args=None):
+    print(f"Process: {os.getpid()}")
     parser = argparse.ArgumentParser(description="Generate candidate topics")
     parser.add_argument("-i", type=os.path.abspath, default="out/resegmented")
     parser.add_argument("-o", type=os.path.abspath)
