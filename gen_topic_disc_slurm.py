@@ -8,9 +8,9 @@ import stat
 
 
 JOBS = [
-	("18:00:00", "meta-llama/Llama-3.3-70B-Instruct", "b200", "gpu:1"),
-	("15:00:00", "openai/gpt-oss-120b"              , "b200", "gpu:1"),
-	("15:00:00", "google/gemma-4-31B-it"            , "b200", "gpu:1"),
+	("24:00:00", "meta-llama/Llama-3.3-70B-Instruct", "rtx", "gpu:1"),
+	("24:00:00", "openai/gpt-oss-120b"              , "rtx", "gpu:1"),
+	("24:00:00", "google/gemma-4-31B-it"            , "rtx", "gpu:1"),
 ]
 
 
@@ -43,7 +43,7 @@ def build_script(repo_dir, duration, partition, email, model, gres, port):
 			"-m",
 			"hot_topic.gen",
 			"-i",
-			shell_quote(repo_dir / "out" / "resegmented"),
+			shell_quote(repo_dir / "out" / "whisper_segmented"),
 			"--ad-spans",
 			shell_quote(repo_dir / "out" / "ad_spans"),
 			"--port",

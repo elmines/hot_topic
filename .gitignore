@@ -6,6 +6,7 @@
 *err
 *out
 whisper*sh
+*svg
 
 # Profiling artifacts
 *prof
