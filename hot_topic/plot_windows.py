@@ -103,7 +103,7 @@ def plot_ad_spans(transcript_csv, labels, timestamp_unit="auto"):
 
 	for span in spans:
 		start, end = span["start"], span["end"]
-		if not isinstance(start, int) or not isinstance(end, int) or not 0 <= start < end <= len(rows):
+		if not isinstance(start, int) or not isinstance(end, int) or not 0 <= start <= end < len(rows):
 			raise ValueError(f"Span {span!r} is outside transcript line range [0, {len(rows)})")
 		hover_text = f"ad span [{start}, {end})"
 		if span["reason"]:
