@@ -11,4 +11,5 @@ $RUN_PREFIX env VLLM_SERVER_DEV_MODE=1 uv run vllm serve \
     --max-model-len $((1 << 14)) \
     --max-num-seqs 16 \
     --max-num-batched-tokens $((1 << 13)) \
-    --gpu-memory-utilization 0.85
+    --gpu-memory-utilization 0.85 \
+    --default-chat-template-kwargs '{"reasoning_effort": "low"}'
