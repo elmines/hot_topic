@@ -31,6 +31,8 @@ from .llm_utils import (
 )
 from .utils import align_quote, combine_rows, normalize_model_name, preprocess
 
+CHECKPOINT_FILENAME = "processed_topics.json"
+
 TOPIC_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -331,21 +333,15 @@ def round_robin_episodes(data_dir):
     return file_names
 
 
-async def run(args, file_names, topic_to_desc, topic_str, write_topics, write_quotes, buffered_topics):
+async def run(
+    args, file_names, topic_to_desc, topic_str, write_topics, write_quotes,
+    processed_files, checkpoint_path,
+):
     client = make_openai_client(args)
     request_semaphore = asyncio.Semaphore(REQUEST_CONCURRENCY)
     renderer = make_renderer(args.model, args.max_model_len)
     input_root = Path(args.i).resolve()
     spans_root = Path(args.ad_spans).resolve()
-    buffered_quotes = []
-
-    def flush():
-        nonlocal buffered_topics, buffered_quotes
-        write_topics(buffered_topics)
-        write_quotes(buffered_quotes)
-        buffered_topics = []
-        buffered_quotes = []
-
     async def process(path, batch_topic_str):
         try:
             return await process_episode(
@@ -367,17 +363,21 @@ async def run(args, file_names, topic_to_desc, topic_str, write_topics, write_qu
             progress.update(1)
 
     with tqdm(total=len(file_names), desc="Processing texts") as progress:
-        try:
-            for batch in episode_batches(file_names, args.episode_batch):
-                topic_str, new_topics, quote_rows = await discover_batch(
-                    process, topic_to_desc, topic_str, batch
-                )
-                buffered_topics.extend(new_topics)
-                buffered_quotes.extend(quote_rows)
-                if max(len(buffered_quotes), len(buffered_topics)) >= args.buffer_size:
-                    flush()
-        finally:
-            flush()
+        for batch in episode_batches(file_names, args.episode_batch):
+            topic_str, new_topics, quote_rows = await discover_batch(
+                process, topic_to_desc, topic_str, batch
+            )
+            write_topics(new_topics)
+            write_quotes(quote_rows)
+            processed_files.extend(
+                Path(path).resolve().relative_to(input_root).as_posix()
+                for path in batch
+            )
+            temporary_path = f"{checkpoint_path}.tmp"
+            with open(temporary_path, "w", encoding="utf-8") as handle:
+                json.dump({"processed_files": processed_files}, handle, indent=2)
+                handle.write("\n")
+            os.replace(temporary_path, checkpoint_path)
 
 
 def main(raw_args=None):
@@ -394,8 +394,11 @@ def main(raw_args=None):
              "Span line numbers must match these transcript CSVs.",
     )
     parser.add_argument("--buffer-size", default=8, type=int)
-    parser.add_argument("--checkpoint", type=int,
-                        help="Resume after this many already-processed files")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume using the processed topics JSON in the output directory",
+    )
     parser.add_argument("--minimum-overlap", default=0.95, type=float,
                         help="Minimum quote overlap score from 0 to 1")
     parser.add_argument(
@@ -406,8 +409,6 @@ def main(raw_args=None):
     add_vllm_client_arguments(parser)
     args = parser.parse_args(raw_args)
 
-    if args.checkpoint is not None and args.checkpoint < 0:
-        parser.error("--checkpoint must be non-negative")
     if not 0 <= args.minimum_overlap <= 1:
         parser.error("--minimum-overlap must be between 0 and 1")
     args.minimum_overlap *= 100
@@ -429,35 +430,62 @@ def main(raw_args=None):
     output_dir = args.o or os.path.abspath(os.path.join("out", f"gen--{normalize_model_name(model_name)}"))
     topic_path = os.path.join(output_dir, "topics.csv")
     quote_path = os.path.join(output_dir, "topic_quotes.csv")
+    checkpoint_path = os.path.join(output_dir, CHECKPOINT_FILENAME)
     os.makedirs(output_dir, exist_ok=True)
 
-    if args.checkpoint is not None:
+    if args.resume:
         for output_path in (topic_path, quote_path):
             if not os.path.isfile(output_path):
-                parser.error(f"checkpoint output does not exist: {output_path}")
+                parser.error(f"resume output does not exist: {output_path}")
+        if not os.path.isfile(checkpoint_path):
+            parser.error(f"resume checkpoint does not exist: {checkpoint_path}")
         with open(topic_path, newline="", encoding="utf-8") as handle:
             checkpoint_topics = [
                 (row["topic"], row["topic_desc"])
                 for row in csv.DictReader(handle)
             ]
         topic_to_desc = OrderedDict(checkpoint_topics)
-        file_names = file_names[args.checkpoint:]
-        buffered_topics = []
+        try:
+            with open(checkpoint_path, encoding="utf-8") as handle:
+                checkpoint = json.load(handle)
+        except json.JSONDecodeError as error:
+            parser.error(f"could not parse resume checkpoint {checkpoint_path}: {error}")
+        if not isinstance(checkpoint, dict) or "processed_files" not in checkpoint:
+            parser.error(
+                f"resume checkpoint must contain a processed_files list: {checkpoint_path}"
+            )
+        processed_files = checkpoint["processed_files"]
+        if not all(isinstance(path, str) for path in processed_files):
+            parser.error(
+                f"resume checkpoint processed_files must be an array of strings: {checkpoint_path}"
+            )
+        processed_files = list(processed_files)
+        processed_file_set = set(processed_files)
+        file_names = [
+            path
+            for path in file_names
+            if Path(path).resolve().relative_to(input_root).as_posix()
+            not in processed_file_set
+        ]
     else:
         topic_to_desc = OrderedDict(DEFAULT_TOPICS)
-        buffered_topics = [list(topic) for topic in DEFAULT_TOPICS]
+        processed_files = []
     topic_str = topic_prompt(topic_to_desc)
 
-    raw_write_topics = get_csv_writer(
-        topic_path, ["author", "topic", "topic_desc"], append=args.checkpoint is not None
-    )
+    raw_write_topics = get_csv_writer(topic_path, ["author", "topic", "topic_desc"], append=args.resume)
     raw_write_quotes = get_csv_writer(
         quote_path,
         ["author", "episode_file", "topic", "episode_quote"],
-        append=args.checkpoint is not None,
+        append=args.resume,
     )
     write_topics = lambda rows: raw_write_topics([model_name, *row] for row in rows)
     write_quotes = lambda rows: raw_write_quotes([model_name, *row] for row in rows)
+
+    if not args.resume:
+        write_topics([list(topic) for topic in DEFAULT_TOPICS])
+        with open(checkpoint_path, "w", encoding="utf-8") as handle:
+            json.dump({"processed_files": processed_files}, handle, indent=2)
+            handle.write("\n")
 
     if file_names:
         asyncio.run(run(
@@ -467,11 +495,14 @@ def main(raw_args=None):
             topic_str,
             write_topics,
             write_quotes,
-            buffered_topics,
+            processed_files,
+            checkpoint_path,
         ))
     else:
-        write_topics(buffered_topics)
-        write_quotes([])
+        if args.resume:
+            with open(checkpoint_path, "w", encoding="utf-8") as handle:
+                json.dump({"processed_files": processed_files}, handle, indent=2)
+                handle.write("\n")
 
 
 if __name__ == "__main__":
