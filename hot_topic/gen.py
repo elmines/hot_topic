@@ -220,7 +220,7 @@ def topic_mentions(payload, path):
         if not all(isinstance(value, str) and value.strip() for value in (topic, description, quote)):
             warning(path, f"Malformed topic: {item!r}")
             continue
-        mentions.append((topic.strip(), description.strip(), quote.strip()))
+        mentions.append((topic.strip().lower(), description.strip(), quote.strip()))
     return mentions
 
 
