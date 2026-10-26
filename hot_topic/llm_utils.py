@@ -276,6 +276,10 @@ def transcript_chunks(rows, renderer, max_model_len, max_new_tokens, path, messa
                 )
 
         chunks.append((offset, chunk, rendered_prompt))
+        if offset + line_count >= len(rows):
+            # Without this, we'll generate several overlapping chunks at the end of the transcript
+            break
+
         offset += max(1, len(chunk) - CHUNK_OVERLAP)
     return chunks
 
