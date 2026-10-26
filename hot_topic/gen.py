@@ -266,6 +266,7 @@ async def process_episode(
     spans_root,
     minimum_overlap,
     request_semaphore,
+    prompt_debug_path=None,
 ):
     transcript_path = Path(path)
     rows = read_transcript(transcript_path)
@@ -298,6 +299,7 @@ async def process_episode(
             messages_for,
             parse_topics_payload,
             request_semaphore,
+            prompt_debug_path,
         )
         for offset, chunk, _rendered in chunks
     ))
@@ -359,6 +361,7 @@ async def run(args, file_names, topic_to_desc, topic_str, write_topics, write_qu
                 spans_root,
                 args.minimum_overlap,
                 request_semaphore,
+                args.prompt_debug,
             )
         finally:
             progress.update(1)
@@ -395,6 +398,11 @@ def main(raw_args=None):
                         help="Resume after this many already-processed files")
     parser.add_argument("--minimum-overlap", default=0.95, type=float,
                         help="Minimum quote overlap score from 0 to 1")
+    parser.add_argument(
+        "--prompt-debug",
+        type=Path,
+        help="Overwrite this file with the user prompt sent for each LLM request",
+    )
     add_vllm_client_arguments(parser)
     args = parser.parse_args(raw_args)
 

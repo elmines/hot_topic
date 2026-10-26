@@ -158,6 +158,47 @@ class TopicSelectionTests(unittest.TestCase):
 
 
 class EmptyResponseTests(unittest.TestCase):
+    def test_prompt_debug_overwrites_with_latest_user_prompt(self):
+        rows = [{"text": "first line"}]
+        with TemporaryDirectory() as temporary:
+            debug_path = Path(temporary) / "prompt.txt"
+
+            async def generate(_client, _model, messages, *_args, **_kwargs):
+                return "{}"
+
+            with patch("hot_topic.llm_utils.generate_text", side_effect=generate):
+                asyncio.run(
+                    generate_chunk_responses(
+                        None,
+                        "model",
+                        0,
+                        rows,
+                        32,
+                        "low",
+                        Path("episode.csv"),
+                        lambda chunk: [{"role": "user", "content": chunk[0]["text"]}],
+                        parse_topics_payload,
+                        prompt_debug_path=debug_path,
+                    )
+                )
+                rows[0]["text"] = "second line"
+                asyncio.run(
+                    generate_chunk_responses(
+                        None,
+                        "model",
+                        0,
+                        rows,
+                        32,
+                        "low",
+                        Path("episode.csv"),
+                        lambda chunk: [{"role": "user", "content": chunk[0]["text"]}],
+                        parse_topics_payload,
+                        prompt_debug_path=debug_path,
+                    )
+                )
+
+            self.assertEqual(debug_path.read_text(encoding="utf-8"), "second line")
+
     def test_empty_response_splits_and_empty_topic_object_does_not(self):
         rows = [{"text": f"line {index}"} for index in range(2)]
 

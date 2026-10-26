@@ -325,13 +325,18 @@ async def generate_chunk_responses(
     messages_for_chunk,
     parse_payload,
     request_semaphore=None,
+    prompt_debug_path=None,
 ):
     request_id = f"chunk-{offset}-{uuid4()}"
+    messages = messages_for_chunk(chunk)
+    if prompt_debug_path is not None:
+        with Path(prompt_debug_path).open("w", encoding="utf-8") as debug_file:
+            debug_file.write(messages[-1]["content"])
     if request_semaphore is None:
         response = await generate_text(
             client,
             model,
-            messages_for_chunk(chunk),
+            messages,
             max_new_tokens,
             reasoning_effort,
             request_id,
@@ -340,7 +345,7 @@ async def generate_chunk_responses(
         response = await generate_text(
             client,
             model,
-            messages_for_chunk(chunk),
+            messages,
             max_new_tokens,
             reasoning_effort,
             request_id,
@@ -381,6 +386,7 @@ async def generate_chunk_responses(
             messages_for_chunk,
             parse_payload,
             request_semaphore,
+            prompt_debug_path,
         ),
         generate_chunk_responses(
             client,
@@ -393,6 +399,7 @@ async def generate_chunk_responses(
             messages_for_chunk,
             parse_payload,
             request_semaphore,
+            prompt_debug_path,
         ),
     )
     return left + right
