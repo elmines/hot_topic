@@ -48,7 +48,7 @@ def add_vllm_client_arguments(parser):
     parser.add_argument(
         "--reasoning-effort",
         choices=REASONING_EFFORT_CHOICES,
-        default="medium",
+        default=None,
         help="Reasoning effort passed to the vLLM chat completion",
     )
     parser.add_argument(
@@ -297,9 +297,11 @@ async def generate_text(
         "model": model,
         "messages": messages,
         "temperature": 0.0,
-        "max_tokens": max_new_tokens,
-        "reasoning_effort": reasoning_effort,
+        "max_tokens": max_new_tokens
     }
+    if reasoning_effort is not None:
+        request['reasoning_effort'] = reasoning_effort
+
     for attempt in range(6):
         try:
             if request_semaphore is None:
