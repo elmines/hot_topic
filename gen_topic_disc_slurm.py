@@ -8,9 +8,9 @@ import stat
 
 
 JOBS = [
-	("24:00:00", "meta-llama/Llama-3.3-70B-Instruct", "rtx", "gpu:1"),
-	("24:00:00", "openai/gpt-oss-120b"              , "rtx", "gpu:1"),
-	("24:00:00", "google/gemma-4-31B-it"            , "rtx", "gpu:1"),
+	("20:00:00", "meta-llama/Llama-3.3-70B-Instruct", "llama.sh", "b200", "gpu:1"),
+	("20:00:00", "openai/gpt-oss-120b"              , "gpt.sh"  , "b200", "gpu:1"),
+	("20:00:00", "google/gemma-4-31B-it"            , "gemma.sh", "b200", "gpu:1"),
 ]
 
 
@@ -33,7 +33,7 @@ def load_config(repo_dir):
 		return json.load(handle)
 
 
-def build_script(repo_dir, duration, partition, email, model, gres, port):
+def build_script(repo_dir, duration, partition, email, model, server_script, gres, port):
 	commands = [
 		" \\\n\t".join(
 		[
@@ -51,6 +51,8 @@ def build_script(repo_dir, duration, partition, email, model, gres, port):
 		]
 		),
 	]
+	if server_script == "llama.sh":
+		commands[0] += " \\\n\t--server-timeout 600"
 	command_str = "\n".join(commands)
 
 	return f"""#!/bin/bash
@@ -86,7 +88,7 @@ cleanup() {{
 trap cleanup EXIT
 
 vllm_log_path={shell_quote(repo_dir)}/slurm_scripts/$SLURM_JOB_NAME.$SLURM_JOB_ID.vllm.log
-MODEL={shell_quote(model)} RUN_PREFIX="exec" API_PORT={port} server_scripts/gpt.sh >$vllm_log_path 2>&1 &
+MODEL={shell_quote(model)} RUN_PREFIX="exec" API_PORT={port} server_scripts/{shell_quote(server_script)} >$vllm_log_path 2>&1 &
 server_pid=$!
 echo Writing vllm output to $vllm_log_path
 
@@ -101,7 +103,7 @@ def main():
 		"rtx": config["rtx_partition"],
 		"b200": config["b200_partition"],
 	}
-	for job_number, (duration, model, partition_name, gres) in enumerate(JOBS, start=1):
+	for job_number, (duration, model, server_script, partition_name, gres) in enumerate(JOBS, start=1):
 		model_dir_name = model.replace("/", "--")
 		script_path = repo_dir / "slurm_scripts" / f"topic_disc_{model_dir_name}.sh"
 		script_path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +114,7 @@ def main():
 			partitions[partition_name],
 			config["email"],
 			model,
+			server_script,
 			gres,
 			23100 + job_number,
 		)

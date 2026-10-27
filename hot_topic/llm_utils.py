@@ -44,6 +44,12 @@ def add_vllm_client_arguments(parser):
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8001)
     parser.add_argument("--api-key", default="derf")
+    parser.add_argument(
+        "--server-timeout",
+        type=float,
+        default=300,
+        help="Seconds to wait for the vLLM server to become ready",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=1 << 11)
     parser.add_argument(
         "--reasoning-effort",
@@ -79,16 +85,23 @@ def validate_vllm_arguments(parser, args):
         args.max_new_tokens < 1
         or num_workers < 1
         or args.episode_batch < 1
+        or args.server_timeout <= 0
         or not 1 <= args.port <= 65535
     ):
         parser.error(
-            "token count, worker count, episode batch, and port must be valid positive values"
+            "token count, worker count, episode batch, server timeout, and port "
+            "must be valid positive values"
         )
 
 
 def configure_vllm_server(parser, args):
     try:
-        wait_for_vllm_server(args.host, args.port, api_key=args.api_key)
+        wait_for_vllm_server(
+            args.host,
+            args.port,
+            api_key=args.api_key,
+            timeout=args.server_timeout,
+        )
         base_url = f"http://{args.host}:{args.port}"
         args.max_model_len = server_max_model_len(base_url, args.api_key)
         args.model = server_model(base_url, args.api_key)
