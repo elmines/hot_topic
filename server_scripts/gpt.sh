@@ -5,7 +5,7 @@ source "$(dirname "$0")/_utils.sh"
 model=${MODEL:-openai/gpt-oss-120b}
 API_PORT=${API_PORT:-8001}
 
-$RUN_PREFIX env uv run vllm serve \
+$RUN_PREFIX uv run vllm serve \
     "$model" \
     --host 0.0.0.0 \
     --port $API_PORT \
