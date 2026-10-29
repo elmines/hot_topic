@@ -48,6 +48,11 @@ VLLM_DEFAULTS = tomllib.loads(
 def add_vllm_client_arguments(parser):
     parser.add_argument("--base-url", default="http://0.0.0.0:8001/v1")
     parser.add_argument("--api-key", default="derf")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model to use when the server exposes multiple models",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=1 << 11)
     parser.add_argument("--max-model-len", type=int, default=VLLM_DEFAULTS["HT_MAX_MODEL_LEN"])
     parser.add_argument("--max-num-seqs", type=int, default=VLLM_DEFAULTS["HT_MAX_NUM_SEQS"])
@@ -102,9 +107,15 @@ def validate_vllm_arguments(parser, args):
 
 def configure_server(parser, args):
     try:
-        args.model = server_model(args.base_url, args.api_key)
+        models = server_models(args.base_url, args.api_key)
     except RuntimeError as exc:
         parser.error(str(exc))
+    if args.model is None:
+        if len(models) != 1:
+            parser.error("server exposes multiple models; specify --model")
+        args.model = models[0]
+    elif args.model not in models:
+        parser.error(f"--model {args.model!r} is not exposed by the server")
     if args.max_model_len <= args.max_new_tokens:
         parser.error("server max_model_len must be greater than --max-new-tokens")
 
@@ -153,13 +164,15 @@ def server_request(base_url, path, api_key, *, attempts=30, retry_delay=10):
     ) from last_error
 
 
-def server_model(base_url, api_key):
+def server_models(base_url, api_key):
     response = server_request(base_url, "/models", api_key)
     try:
-        model = response["data"][0]["id"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("models endpoint response did not contain a model") from exc
-    return model
+        models = [model["id"] for model in response["data"]]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError("models endpoint response did not contain models") from exc
+    if not models or not all(isinstance(model, str) and model for model in models):
+        raise RuntimeError("models endpoint response did not contain valid models")
+    return models
 
 
 def read_transcript(path):
