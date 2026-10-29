@@ -6,9 +6,10 @@ import csv
 import glob
 import json
 import os
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from pathlib import Path
 
+import numpy as np
 from tqdm import tqdm
 
 from .constants import DEFAULT_TOPICS, NOISE_PROMPT
@@ -32,6 +33,7 @@ from .llm_utils import (
 from .utils import align_quote, combine_rows, normalize_model_name, preprocess
 
 CHECKPOINT_FILENAME = "processed_topics.json"
+RNG = np.random.default_rng(0)
 
 TOPIC_SCHEMA = {
     "type": "object",
@@ -121,10 +123,32 @@ def format_topic(topic_name, topic_desc):
     return f"[1] {topic_name} : {topic_desc}"
 
 
-def topic_prompt(topic_to_desc):
-    return "\n".join(
-        format_topic(name, description) for name, description in topic_to_desc.items()
+def topic_prompt(topic_to_desc, topic_frequencies=None, max_topics=100):
+    topic_frequencies = topic_frequencies or {}
+    topics = list(topic_to_desc)
+    if not topics or max_topics < 1:
+        return ""
+    weights = np.maximum(
+        [topic_frequencies.get(topic, 0) for topic in topics],
+        1,
+    ).astype(float)
+    weights /= weights.sum()
+    topics = RNG.choice(
+        topics,
+        size=min(max_topics, len(topics)),
+        replace=False,
+        p=weights,
     )
+    return "\n".join(format_topic(name, topic_to_desc[name]) for name in topics)
+
+
+def quote_topic_frequencies(quote_path):
+    with open(quote_path, newline="", encoding="utf-8") as handle:
+        return Counter(
+            row["topic"].strip().lower()
+            for row in csv.DictReader(handle)
+            if row.get("topic") and row["topic"].strip()
+        )
 
 
 def messages_for_chunk(chunk, topic_str):
@@ -249,10 +273,24 @@ def incorporate_topics(topic_to_desc, episode_results):
     return new_topics, quote_rows
 
 
-async def discover_batch(process, topic_to_desc, topic_str, batch):
+async def discover_batch(
+    process,
+    topic_to_desc,
+    topic_str,
+    batch,
+    topic_frequencies=None,
+    max_prompt_topics=100,
+):
     results = await asyncio.gather(*(process(path, topic_str) for path in batch))
     new_topics, quote_rows = incorporate_topics(topic_to_desc, results)
-    return topic_prompt(topic_to_desc), new_topics, quote_rows
+    if topic_frequencies is None:
+        topic_frequencies = Counter()
+    topic_frequencies.update(topic for _path, topic, _quote in quote_rows)
+    return (
+        topic_prompt(topic_to_desc, topic_frequencies, max_prompt_topics),
+        new_topics,
+        quote_rows,
+    )
 
 
 async def process_episode(
@@ -334,7 +372,7 @@ def round_robin_episodes(data_dir):
 
 
 async def run(
-    args, file_names, topic_to_desc, topic_str, write_topics, write_quotes,
+    args, file_names, topic_to_desc, topic_frequencies, topic_str, write_topics, write_quotes,
     processed_files, checkpoint_path,
 ):
     client = make_openai_client(args)
@@ -365,7 +403,12 @@ async def run(
     with tqdm(total=len(file_names), desc="Processing texts") as progress:
         for batch in episode_batches(file_names, args.episode_batch):
             topic_str, new_topics, quote_rows = await discover_batch(
-                process, topic_to_desc, topic_str, batch
+                process,
+                topic_to_desc,
+                topic_str,
+                batch,
+                topic_frequencies,
+                args.max_prompt_topics,
             )
             write_topics(new_topics)
             write_quotes(quote_rows)
@@ -395,6 +438,12 @@ def main(raw_args=None):
     )
     parser.add_argument("--buffer-size", default=8, type=int)
     parser.add_argument(
+        "--max-prompt-topics",
+        default=100,
+        type=int,
+        help="Maximum number of topics to include in each prompt",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume using the processed topics JSON in the output directory",
@@ -411,6 +460,8 @@ def main(raw_args=None):
 
     if not 0 <= args.minimum_overlap <= 1:
         parser.error("--minimum-overlap must be between 0 and 1")
+    if args.max_prompt_topics < 1:
+        parser.error("--max-prompt-topics must be at least 1")
     args.minimum_overlap *= 100
     validate_vllm_arguments(parser, args)
 
@@ -446,6 +497,10 @@ def main(raw_args=None):
             ]
         topic_to_desc = OrderedDict(checkpoint_topics)
         try:
+            topic_frequencies = quote_topic_frequencies(quote_path)
+        except (OSError, csv.Error) as error:
+            parser.error(f"could not read quote frequencies from {quote_path}: {error}")
+        try:
             with open(checkpoint_path, encoding="utf-8") as handle:
                 checkpoint = json.load(handle)
         except json.JSONDecodeError as error:
@@ -469,8 +524,11 @@ def main(raw_args=None):
         ]
     else:
         topic_to_desc = OrderedDict(DEFAULT_TOPICS)
+        topic_frequencies = Counter()
         processed_files = []
-    topic_str = topic_prompt(topic_to_desc)
+    topic_str = topic_prompt(
+        topic_to_desc, topic_frequencies, args.max_prompt_topics
+    )
 
     raw_write_topics = get_csv_writer(topic_path, ["author", "topic", "topic_desc"], append=args.resume)
     raw_write_quotes = get_csv_writer(
@@ -492,6 +550,7 @@ def main(raw_args=None):
             args,
             file_names,
             topic_to_desc,
+            topic_frequencies,
             topic_str,
             write_topics,
             write_quotes,
