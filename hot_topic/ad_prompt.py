@@ -16,7 +16,7 @@ from .llm_utils import (
     REQUEST_CONCURRENCY,
     add_token_estimate_arguments,
     add_vllm_client_arguments,
-    configure_vllm_server,
+    configure_server,
     episode_batches,
     format_transcript,
     generate_chunk_responses,
@@ -300,7 +300,7 @@ def main(raw_args=None):
     except ValueError as exc:
         parser.error(str(exc))
 
-    configure_vllm_server(parser, args)
+    configure_server(parser, args)
 
     if args.estimate_tokens:
         estimate_token_lengths(args, input_files)

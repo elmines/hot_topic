@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 import time
+import tomllib
 from multiprocessing import cpu_count
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -22,8 +23,6 @@ from vllm.config import DeviceConfig, ModelConfig, VllmConfig
 from vllm.exceptions import VLLMValidationError
 from vllm.renderers import ChatParams, renderer_from_config
 
-from hot_topic.vllm_utils import wait_for_vllm_server
-
 logger = logging.getLogger(__name__)
 
 MAX_LINES_PER_REQUEST = 300
@@ -39,18 +38,24 @@ REASONING_EFFORT_CHOICES = (
     "max",
 )
 
+VLLM_DEFAULTS = tomllib.loads(
+    (Path(__file__).resolve().parents[1] / "vllm_defaults.cfg").read_text(
+        encoding="utf-8"
+    )
+)
+
 
 def add_vllm_client_arguments(parser):
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--base-url", default="http://0.0.0.0:8001/v1")
     parser.add_argument("--api-key", default="derf")
-    parser.add_argument(
-        "--server-timeout",
-        type=float,
-        default=300,
-        help="Seconds to wait for the vLLM server to become ready",
-    )
     parser.add_argument("--max-new-tokens", type=int, default=1 << 11)
+    parser.add_argument("--max-model-len", type=int, default=VLLM_DEFAULTS["HT_MAX_MODEL_LEN"])
+    parser.add_argument("--max-num-seqs", type=int, default=VLLM_DEFAULTS["HT_MAX_NUM_SEQS"])
+    parser.add_argument(
+        "--max-num-batched-tokens",
+        type=int,
+        default=VLLM_DEFAULTS["HT_MAX_NUM_BATCHED_TOKENS"],
+    )
     parser.add_argument(
         "--reasoning-effort",
         choices=REASONING_EFFORT_CHOICES,
@@ -83,28 +88,21 @@ def validate_vllm_arguments(parser, args):
     num_workers = getattr(args, "num_workers", 1)
     if (
         args.max_new_tokens < 1
+        or args.max_model_len < 1
+        or args.max_num_seqs < 1
+        or args.max_num_batched_tokens < 1
         or num_workers < 1
         or args.episode_batch < 1
-        or args.server_timeout <= 0
-        or not 1 <= args.port <= 65535
     ):
         parser.error(
-            "token count, worker count, episode batch, server timeout, and port "
+            "token counts, worker count, and episode batch "
             "must be valid positive values"
         )
 
 
-def configure_vllm_server(parser, args):
+def configure_server(parser, args):
     try:
-        wait_for_vllm_server(
-            args.host,
-            args.port,
-            api_key=args.api_key,
-            timeout=args.server_timeout,
-        )
-        base_url = f"http://{args.host}:{args.port}"
-        args.max_model_len = server_max_model_len(base_url, args.api_key)
-        args.model = server_model(base_url, args.api_key)
+        args.model = server_model(args.base_url, args.api_key)
     except RuntimeError as exc:
         parser.error(str(exc))
     if args.max_model_len <= args.max_new_tokens:
@@ -113,7 +111,7 @@ def configure_vllm_server(parser, args):
 
 def make_openai_client(args):
     return AsyncOpenAI(
-        base_url=f"http://{args.host}:{args.port}/v1",
+        base_url=args.base_url,
         api_key=args.api_key,
         timeout=900.0,
         max_retries=0,
@@ -132,7 +130,7 @@ def make_renderer(model, max_model_len):
     return renderer_from_config(config)
 
 
-def server_request(base_url, path, api_key, *, attempts=30, retry_delay=2):
+def server_request(base_url, path, api_key, *, attempts=30, retry_delay=10):
     request = Request(
         f"{base_url.rstrip('/')}/{path.lstrip('/')}",
         headers={"Authorization": f"Bearer {api_key}"},
@@ -156,26 +154,12 @@ def server_request(base_url, path, api_key, *, attempts=30, retry_delay=2):
 
 
 def server_model(base_url, api_key):
-    response = server_request(base_url, "/v1/models", api_key)
+    response = server_request(base_url, "/models", api_key)
     try:
         model = response["data"][0]["id"]
     except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("vLLM /v1/models response did not contain a model") from exc
+        raise RuntimeError("models endpoint response did not contain a model") from exc
     return model
-
-
-def server_max_model_len(base_url, api_key):
-    response = server_request(base_url, "/server_info", api_key)
-    for key in ("max_model_len", "max_seq_len"):
-        value = response.get(key) if isinstance(response, dict) else None
-        if isinstance(value, int):
-            return value
-
-    config = response.get("vllm_config") if isinstance(response, dict) else None
-    match = re.search(r"(?:max_model_len|max_seq_len)=(\d+)", str(config))
-    if match:
-        return int(match.group(1))
-    raise RuntimeError("vLLM /server_info response did not contain max_model_len")
 
 
 def read_transcript(path):
@@ -274,6 +258,7 @@ def transcript_chunks(rows, renderer, max_model_len, max_new_tokens, path, messa
     offset = 0
     while offset < len(rows):
         line_count = min(MAX_LINES_PER_REQUEST, len(rows) - offset)
+        print(f"path={path}, offset={offset}, line_count={line_count}")
         while line_count > 1:
             chunk = rows[offset:offset + line_count]
             rendered_prompt = try_render_chat(renderer, messages_for_chunk(chunk))

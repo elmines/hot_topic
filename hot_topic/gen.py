@@ -16,7 +16,7 @@ from .csv_writer import get_csv_writer
 from .llm_utils import (
     REQUEST_CONCURRENCY,
     add_vllm_client_arguments,
-    configure_vllm_server,
+    configure_server,
     episode_batches,
     format_transcript,
     generate_chunk_responses,
@@ -425,7 +425,7 @@ def main(raw_args=None):
     if args.n:
         file_names = file_names[:args.n]
 
-    configure_vllm_server(parser, args)
+    configure_server(parser, args)
     model_name = args.model
     output_dir = args.o or os.path.abspath(os.path.join("out", f"gen--{normalize_model_name(model_name)}"))
     topic_path = os.path.join(output_dir, "topics.csv")

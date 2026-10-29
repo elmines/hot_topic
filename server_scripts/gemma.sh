@@ -1,16 +1,17 @@
 #!/bin/bash
 
 EXTRA_ARGS=($@)
+source "$(dirname "$0")/_utils.sh"
 model=${MODEL:-google/gemma-4-31B-it}
 API_PORT=${API_PORT:-8001}
 
-$RUN_PREFIX env VLLM_SERVER_DEV_MODE=1 uv run vllm serve \
+$RUN_PREFIX env uv run vllm serve \
     "$model" \
     --host 0.0.0.0 \
     --port $API_PORT \
-    --max-model-len $((1 << 14)) \
-    --max-num-seqs 16 \
-    --max-num-batched-tokens $((1 << 13)) \
+    --max-model-len "$HT_MAX_MODEL_LEN" \
+    --max-num-seqs "$HT_MAX_NUM_SEQS" \
+    --max-num-batched-tokens "$HT_MAX_NUM_BATCHED_TOKENS" \
     --gpu-memory-utilization 0.85 \
     --default-chat-template-kwargs '{"enable_thinking": false}' \
     "${EXTRA_ARGS[@]}"

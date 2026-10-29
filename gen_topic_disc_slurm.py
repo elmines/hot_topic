@@ -46,13 +46,11 @@ def build_script(repo_dir, duration, partition, email, model, server_script, gre
 			shell_quote(repo_dir / "out" / "whisper_segmented"),
 			"--ad-spans",
 			shell_quote(repo_dir / "out" / "ad_spans"),
-			"--port",
-			str(port),
+			"--base-url",
+			f"http://0.0.0.0:{port}/v1",
 		]
 		),
 	]
-	if server_script == "llama.sh":
-		commands[0] += " \\\n\t--server-timeout 600"
 	command_str = "\n".join(commands)
 
 	return f"""#!/bin/bash
