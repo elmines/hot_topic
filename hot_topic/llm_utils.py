@@ -141,13 +141,15 @@ def make_renderer(model, max_model_len):
     return renderer_from_config(config)
 
 
-def server_request(base_url, path, api_key, *, attempts=30, retry_delay=10):
+def server_request(base_url, path, api_key, *, attempts=30, retry_delay=30):
+    targ = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
     request = Request(
-        f"{base_url.rstrip('/')}/{path.lstrip('/')}",
+        targ,
         headers={"Authorization": f"Bearer {api_key}"},
     )
     last_error = None
     for attempt in range(attempts):
+        print(f"targ={targ}, last_error={last_error}")
         try:
             with urlopen(request, timeout=10) as response:
                 return json.load(response)
