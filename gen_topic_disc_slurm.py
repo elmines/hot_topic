@@ -9,8 +9,8 @@ import stat
 
 JOBS = [
 	("20:00:00", "meta-llama/Llama-3.3-70B-Instruct", "llama.sh", "b200", "gpu:1"),
-	("20:00:00", "openai/gpt-oss-120b"              , "gpt.sh"  , "b200", "gpu:1"),
-	("20:00:00", "google/gemma-4-31B-it"            , "gemma.sh", "b200", "gpu:1"),
+	("9:00:00", "openai/gpt-oss-120b"              , "gpt.sh"  , "b200", "gpu:1"),
+	("9:00:00", "google/gemma-4-31B-it"            , "gemma.sh", "b200", "gpu:1"),
 ]
 
 
