@@ -18,7 +18,7 @@ from .llm_utils import (
     REQUEST_CONCURRENCY,
     add_vllm_client_arguments,
     configure_server,
-    episode_batches,
+    request_batches,
     format_transcript,
     generate_chunk_responses,
     make_openai_client,
@@ -401,7 +401,7 @@ async def run(
             progress.update(1)
 
     with tqdm(total=len(file_names), desc="Processing texts") as progress:
-        for batch in episode_batches(file_names, args.episode_batch):
+        for batch in request_batches(file_names, args.request_batch):
             topic_str, new_topics, quote_rows = await discover_batch(
                 process,
                 topic_to_desc,

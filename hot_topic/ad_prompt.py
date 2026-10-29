@@ -17,7 +17,7 @@ from .llm_utils import (
     add_token_estimate_arguments,
     add_vllm_client_arguments,
     configure_server,
-    episode_batches,
+    request_batches,
     format_transcript,
     generate_chunk_responses,
     make_openai_client,
@@ -265,7 +265,7 @@ async def run(args, input_files, output_dir):
     n_transcribed = 0
     duration = -time.time()
     with tqdm(total=len(input_files), desc="Writing transcripts") as progress:
-        for batch_files in episode_batches(input_files, args.episode_batch):
+        for batch_files in request_batches(input_files, args.request_batch):
             tasks = [asyncio.create_task(process(path)) for path in batch_files]
             for task in asyncio.as_completed(tasks):
                 n_transcribed += await task

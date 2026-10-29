@@ -68,10 +68,10 @@ def add_vllm_client_arguments(parser):
         help="Reasoning effort passed to the vLLM chat completion",
     )
     parser.add_argument(
-        "--episode-batch",
+        "--request-batch",
         type=int,
         default=8,
-        help="Number of episodes to process concurrently before starting the next batch",
+        help="Number of requests to process concurrently before starting the next batch",
     )
 
 
@@ -97,10 +97,10 @@ def validate_vllm_arguments(parser, args):
         or args.max_num_seqs < 1
         or args.max_num_batched_tokens < 1
         or num_workers < 1
-        or args.episode_batch < 1
+        or args.request_batch < 1
     ):
         parser.error(
-            "token counts, worker count, and episode batch "
+            "token counts, worker count, and request batch "
             "must be valid positive values"
         )
 
@@ -424,8 +424,8 @@ async def generate_chunk_responses(
     return left + right
 
 
-def episode_batches(input_files, episode_batch):
+def request_batches(input_files, request_batch):
     return [
-        input_files[start:start + episode_batch]
-        for start in range(0, len(input_files), episode_batch)
+        input_files[start:start + request_batch]
+        for start in range(0, len(input_files), request_batch)
     ]
