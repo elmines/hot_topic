@@ -35,7 +35,7 @@ def load_config(repo_dir):
 
 
 def build_script(
-    repo_dir, transcript_root, duration, partition, email, input_paths,
+    repo_dir, transcript_root, ad_spans, duration, partition, email, input_paths,
     port_number, model, server_script, gres,
 ):
     if input_paths:
@@ -43,7 +43,9 @@ def build_script(
             "uv", "run", "python", "-m",             "hot_topic.reject_quote",
             "--base-url", f"http://0.0.0.0:{port_number}/v1",
             "--root", shell_quote(transcript_root),
+            "--ad-spans", shell_quote(ad_spans),
             "-i", *(shell_quote(path) for path in input_paths),
+            "--resume"
         ]
         command_str = " \\\n\t".join(command)
     else:
@@ -101,6 +103,10 @@ def parse_args():
         "--quotes-root", default=Path("out"), type=Path,
         help="Root directory containing generated topic quote CSVs",
     )
+    parser.add_argument(
+        "--ad-spans", default=Path("out/ad_spans"), type=Path,
+        help="Directory containing ad-span JSON files",
+    )
     return parser.parse_args()
 
 
@@ -113,6 +119,9 @@ def main():
     quotes_root = args.quotes_root.expanduser().resolve()
     if not quotes_root.is_dir():
         raise SystemExit(f"quotes root does not exist or is not a directory: {quotes_root}")
+    ad_spans = args.ad_spans.expanduser().resolve()
+    if not ad_spans.is_dir():
+        raise SystemExit(f"ad-spans directory does not exist or is not a directory: {ad_spans}")
     config = load_config(repo_dir)
     slurm_dir = repo_dir / "slurm_scripts"
     slurm_dir.mkdir(parents=True, exist_ok=True)
@@ -126,7 +135,7 @@ def main():
         port_number = 23200 + job_number
         script_path = slurm_dir / f"reject_quote_{model.replace('/', '--')}.sh"
         script = build_script(
-            repo_dir, transcript_root, duration, partitions[partition_name],
+            repo_dir, transcript_root, ad_spans, duration, partitions[partition_name],
             config["email"], input_paths, port_number,
             model, server_script, gres,
         )
