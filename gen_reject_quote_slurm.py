@@ -9,9 +9,9 @@ import stat
 
 
 JOBS = [
-    ("8:00:00", "meta-llama/Llama-3.3-70B-Instruct", "llama.sh", "b200", "gpu:1"),
-    ("4:00:00", "openai/gpt-oss-120b", "gpt.sh", "rtx", "gpu:1"),
-    ("4:00:00", "google/gemma-4-31B-it", "gemma.sh", "rtx", "gpu:1"),
+    ("24:00:00", "meta-llama/Llama-3.3-70B-Instruct", "llama.sh", "b200", "gpu:1"),
+    ("24:00:00", "openai/gpt-oss-120b", "gpt.sh", "b200", "gpu:1"),
+    ("24:00:00", "google/gemma-4-31B-it", "gemma.sh", "b200", "gpu:1"),
 ]
 
 
@@ -34,12 +34,15 @@ def load_config(repo_dir):
         return json.load(handle)
 
 
-def build_script(repo_dir, root, duration, partition, email, input_paths, port_number, model, server_script, gres):
+def build_script(
+    repo_dir, transcript_root, duration, partition, email, input_paths,
+    port_number, model, server_script, gres,
+):
     if input_paths:
         command = [
             "uv", "run", "python", "-m",             "hot_topic.reject_quote",
             "--base-url", f"http://0.0.0.0:{port_number}/v1",
-            "--root", shell_quote(root),
+            "--root", shell_quote(transcript_root),
             "-i", *(shell_quote(path) for path in input_paths),
         ]
         command_str = " \\\n\t".join(command)
@@ -55,7 +58,7 @@ def build_script(repo_dir, root, duration, partition, email, input_paths, port_n
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres={shell_quote(gres)}
-#SBATCH --mem=32gb
+#SBATCH --mem=48gb
 #SBATCH --mail-user={shell_quote(email)}
 #SBATCH --mail-type=BEGIN,FAIL,END
 #SBATCH --output=%x.%j.out
@@ -90,30 +93,40 @@ echo Writing vllm output to $vllm_log_path
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate Slurm scripts for reject_quote jobs.")
-    parser.add_argument("--root", default=Path("out"), type=Path)
+    parser.add_argument(
+        "--root", default=Path("out/whisper_segmented"), type=Path,
+        help="Root directory for transcript paths in the input CSVs",
+    )
+    parser.add_argument(
+        "--quotes-root", default=Path("out"), type=Path,
+        help="Root directory containing generated topic quote CSVs",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     repo_dir = Path(__file__).resolve().parent
-    root = args.root.expanduser().resolve()
-    if not root.is_dir():
-        raise SystemExit(f"root does not exist or is not a directory: {root}")
+    transcript_root = args.root.expanduser().resolve()
+    if not transcript_root.is_dir():
+        raise SystemExit(f"transcript root does not exist or is not a directory: {transcript_root}")
+    quotes_root = args.quotes_root.expanduser().resolve()
+    if not quotes_root.is_dir():
+        raise SystemExit(f"quotes root does not exist or is not a directory: {quotes_root}")
     config = load_config(repo_dir)
     slurm_dir = repo_dir / "slurm_scripts"
     slurm_dir.mkdir(parents=True, exist_ok=True)
 
     partitions = {"rtx": config["rtx_partition"], "b200": config["b200_partition"]}
     input_paths = [
-        root / f"gen--{model.replace('/', '--')}" / "topic_quotes.csv"
+        quotes_root / f"gen--{model.replace('/', '--')}" / "topic_quotes.csv"
         for _, model, _, _, _ in JOBS
     ]
     for job_number, (duration, model, server_script, partition_name, gres) in enumerate(JOBS, start=1):
         port_number = 23200 + job_number
         script_path = slurm_dir / f"reject_quote_{model.replace('/', '--')}.sh"
         script = build_script(
-            repo_dir, root, duration, partitions[partition_name],
+            repo_dir, transcript_root, duration, partitions[partition_name],
             config["email"], input_paths, port_number,
             model, server_script, gres,
         )

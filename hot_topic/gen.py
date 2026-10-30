@@ -30,7 +30,13 @@ from .llm_utils import (
     validate_vllm_arguments,
     warning,
 )
-from .utils import align_quote, combine_rows, normalize_model_name, preprocess
+from .utils import (
+    align_quote,
+    combine_rows,
+    drop_ad_span_lines,
+    normalize_model_name,
+    preprocess,
+)
 
 CHECKPOINT_FILENAME = "processed_topics.json"
 RNG = np.random.default_rng(0)
@@ -196,31 +202,6 @@ def load_ad_spans(transcript_path, input_root, spans_root, line_count):
         warning(transcript_path, f"ad span file {span_path} is missing a spans array")
         return []
     return spans
-
-
-def drop_ad_span_lines(rows, spans, path=None):
-    rows = list(rows)
-    covered = set()
-    line_count = len(rows)
-    for span in spans:
-        if (
-            not isinstance(span, dict)
-            or not isinstance(span.get("start"), int)
-            or not isinstance(span.get("end"), int)
-        ):
-            if path is not None:
-                warning(path, f"Malformed ad span: {span!r}")
-            continue
-        start, end = span["start"], span["end"]
-        if end < start:
-            if path is not None:
-                warning(path, f"Ad span {span!r} has an invalid closed line range")
-            continue
-        start = max(start, 0)
-        end = min(end, line_count - 1)
-        if start <= end:
-            covered.update(range(start, end + 1))
-    return [row for index, row in enumerate(rows) if index not in covered]
 
 
 def prepare_transcript(rows, spans, path=None):

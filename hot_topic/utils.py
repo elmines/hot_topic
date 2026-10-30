@@ -3,6 +3,8 @@ from operator import itemgetter
 import csv
 import os
 import re
+import sys
+from pathlib import Path
 
 import pandas as pd
 from rapidfuzz.fuzz import partial_ratio_alignment
@@ -30,6 +32,34 @@ def normalize_model_name(model_name: str) -> str:
     return model_name.replace("/", "--")
 
 
+def drop_ad_span_lines(rows, spans, path=None):
+    rows = list(rows)
+    covered = set()
+    line_count = len(rows)
+    for span in spans:
+        if (
+            not isinstance(span, dict)
+            or not isinstance(span.get("start"), int)
+            or not isinstance(span.get("end"), int)
+        ):
+            if path is not None:
+                print(f"{Path(path).name}: Warning: Malformed ad span: {span!r}", file=sys.stderr)
+            continue
+        start, end = span["start"], span["end"]
+        if end < start:
+            if path is not None:
+                print(
+                    f"{Path(path).name}: Warning: Ad span {span!r} has an invalid closed line range",
+                    file=sys.stderr,
+                )
+            continue
+        start = max(start, 0)
+        end = min(end, line_count - 1)
+        if start <= end:
+            covered.update(range(start, end + 1))
+    return [row for index, row in enumerate(rows) if index not in covered]
+
+
 def align_quote(quote: str, text: str, minimum_overlap: float) -> Optional[str]:
     quote = quote.strip()
     if not quote:
@@ -54,8 +84,16 @@ class ContextExtractor:
     off disk every time we want to extract the context
     for a quote from said transcript
     """
-    def __init__(self):
+    def __init__(self, input_root=None, spans_root=None):
         self.__episode_texts: Dict[str, str] = dict()
+        self.__input_root = Path(input_root).resolve() if input_root is not None else None
+        self.__spans_root = Path(spans_root).resolve() if spans_root is not None else None
+        if self.__spans_root is not None:
+            if self.__input_root is None:
+                raise ValueError("input_root is required when spans_root is provided")
+            from .gen import load_ad_spans
+
+            self.__load_ad_spans = load_ad_spans
 
 
     def __call__(self,
@@ -64,8 +102,20 @@ class ContextExtractor:
                               right_context_size=4096):
         episode_path = row['episode_file']
         if episode_path not in self.__episode_texts:
-            with open(episode_path, newline="") as source:
-                self.__episode_texts[episode_path] = combine_rows(preprocess(csv.DictReader(source)))
+            transcript_path = Path(episode_path)
+            if not transcript_path.is_absolute() and self.__input_root is not None:
+                transcript_path = self.__input_root / transcript_path
+            with transcript_path.open(newline="") as source:
+                rows = list(csv.DictReader(source))
+            if self.__spans_root is not None:
+                spans = self.__load_ad_spans(
+                    transcript_path,
+                    self.__input_root,
+                    self.__spans_root,
+                    len(rows),
+                )
+                rows = drop_ad_span_lines(rows, spans, transcript_path)
+            self.__episode_texts[episode_path] = combine_rows(preprocess(rows))
         text = self.__episode_texts[episode_path]
         quote_text = row['episode_quote']
         quote_start = text.index(quote_text)
