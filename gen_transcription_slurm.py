@@ -265,7 +265,7 @@ slurm_template = """#!/bin/bash
 
 export XDG_RUNTIME_DIR=$SLURM_TMPDIR
 echo CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
-module load cuda/12.4.1 gcc/12.2.0
+module load cuda/12.4.1 gcc/12.2.0 ffmpeg
 date
 hostname
 cd {repo_dir}
