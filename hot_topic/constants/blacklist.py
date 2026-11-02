@@ -2,7 +2,7 @@ import re
 
 _CASE_INSENS_PATTS = [
     # Websites
-    r"(dot|\.) ?(com|edu|org|net)",
+    r"(dot|\.) ?(com|edu|org|net|fm)",
 
     # University ads
     r"rasmussen", # Too aggressive?
@@ -18,7 +18,7 @@ _CASE_INSENS_PATTS = [
     r"gainesville",
 
     # Local Businesses
-    r"Spurrier's Grit-Iron Grill",
+    r"Spurrier's Grit(-| )?Iron Grill",
     r"(Original|All)( |-)American Kitchen",
     r"(V|B|Bee) Pizza",
     r"Chevrolet GMC",
@@ -49,10 +49,17 @@ _CASE_INSENS_PATTS = [
     r"Offering the products you need all in one place",
     r"Azure Well",
     r"And with Fin, we've built the number one AI agent for customer service",
+
+    # Some Amazon ad campaign
     r"Know a local business that will make a great partner",
     r"A local coffee shop owner, florist, automotive shop, dry cleaner, you name it",
     r"are sold near you",
+
+    # American Express
+    r"American Express",
     r"MX Business Gold Card",
+    r"MXTravel",
+
     r"ACAST",
     r"packed with bold ingredients",
     r"Coligan",
@@ -71,6 +78,38 @@ _CASE_INSENS_PATTS = [
     r"you can get back to what matters most",
     r"epending on certain loan attributes",
     r"uilt for business",
+
+    # VPN ads because everyone has them
+    r"(Nord|Express) ?VPN",
+    r"NordSteller",
+
+    r"Worth Recruiting",
+    r"Posit Connect",
+    r"TalkPython",
+    r"Squarespace",
+    r"Delete ?Me",
+    r"KRCS", # Some Apple retailer
+    r"(?<!A)Udacity", # Udacity, not audacity
+    r"SteamClock",
+    r"Zbiotics",
+    r"Jubilee Trading Co",
+    r"Mint ?Mobile",
+    r"Colligan",
+    r"Uber Eats",
+    r"Pepsi Prebiotic",
+    r"Carvana",
+    r"Ever ?Pass",
+    r"Exclaimer",
+    r"State Farm",
+    r"Lowe'?s",
+    r"Nespresso",
+    r"Factor Meals",
+
+    #Entertainment services--everything is called "plus" these days
+    r"(MGM|Disney) ?(plus|\+)",
+    r"Hulu",
+    r"Britbox",
+    r"RIPBOX", # mispronunciation of Britbox
 
     # Florida driver saftey
     r"isn't just a road, it's our workplace",
@@ -99,6 +138,10 @@ _CASE_INSENS_PATTS = [
     r"[\[(](music|upbeat|singing|rock|sirens wailing)",
     r"♪",
 
+    # General Ad Language
+    r"brought to you by",
+    r"is sponsored by"
+
 ]
 
 _CASE_AD_PATTS = [
@@ -115,6 +158,15 @@ _CASE_AD_PATTS = [
     r"Lem is",
     r"Burrito", # capitalized--probably ad for burrito factory
 
+    # Short brand-names that probably need to be case-sensitive
+    r"Shiny", # from Posit-Connect
+    r"Sentry", # from TalkPython
+    r"Seer", # from TalkPython
+    r"Gusto",
+    r"Factor",
+    r"Oracle",
+    r"Ring",
+    r"Centuries",
 
     r"Zin", # nicotine patch
     r"Warning\.", # From tobacco ads
