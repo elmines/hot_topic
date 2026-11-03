@@ -2,7 +2,9 @@ import re
 
 _CASE_INSENS_PATTS = [
     # Websites
-    r"(dot|\.) ?(com|edu|org|net|fm)",
+    r"(dot|\.) ?(com|edu|org|net|fm|au|me|io)",
+    # Toll-free numbers (still a thing apparently)
+    r"1-800",
 
     # University ads
     r"rasmussen", # Too aggressive?
@@ -18,36 +20,35 @@ _CASE_INSENS_PATTS = [
     r"gainesville",
 
     # Local Businesses
-    r"Spurrier's Grit(-| )?Iron Grill",
-    r"(Original|All)( |-)American Kitchen",
-    r"(V|B|Bee) Pizza",
+    r"Spurrier's Gri(t|d)(-| )?Iron Grill",
+    r"(Original|All)(-| )American Kitchen",
+    r"(V|B|Bee)(-| )Pizza",
     r"Chevrolet GMC",
     r"GMC Sierra",
 
-    # Notional Ads
-    r"T(-| )Mobile",
-    r"T(-| )Satellite",
+    # National Ads
+    r"T(-| )?(Mobile|Satellite)",
     r"Chevy Silverado",
     r"Burrito Factory",
     r"v(e|i)rbo", # too aggressive?
-    r"MyFICO",
-    r"Orderly Meds",
-    r"Hollywood Feed",
-    r"Amazon Hub Delivery",
-    r"Support After Abortion",
-    r"Ellie's Eden",
-    r"Ellie Zedin",
-    r"US Bank Business Essential",
-    r"Alpha Insurance",
+    r"My ?FICO",
+    r"Orderly ?Meds",
+    r"Hollywood ?Feed",
+    r"Amazon ?Hub ?Delivery",
+    r"Support ?After ?Abortion",
+    r"Ellie's ?Eden",
+    r"Ellie ?Zedin",
+    r"US ?Bank ?Business ?Essential",
+    r"Alpha ?Insurance",
     r"Hartford",
     r"OnDeck",
     r"Grai?nger",
-    r"American Express Business Gold Card",
+    r"American ?Express ?Business ?Gold ?Card",
     r"ACAS powers",
-    r"Instagram Teen Accounts",
+    r"Instagram ?Teen ?Accounts",
     r"Because your playbook ensures your arena is always ready for tip(-| )off",
     r"Offering the products you need all in one place",
-    r"Azure Well",
+    r"Azure ?Well",
     r"And with Fin, we've built the number one AI agent for customer service",
 
     # Some Amazon ad campaign
@@ -56,22 +57,21 @@ _CASE_INSENS_PATTS = [
     r"are sold near you",
 
     # American Express
-    r"American Express",
-    r"MX Business Gold Card",
+    r"American ?Express",
+    r"MX ?Business ?Gold ?Card",
     r"MXTravel",
 
     r"ACAST",
     r"packed with bold ingredients",
-    r"Coligan",
-    r"Advantage Business Program",
+    r"Advantage ?Business ?Program",
     r"Kraft Mac and Cheese",
-    r"Weight Watchers",
-    r"Celtic Bank",
-    r"Simply Money",
-    r"(C|k)alshi",
-    r"AirMed",
-    r"Good and the Beautiful's Reading",
-    r"P(er|urr)fect Bistro",
+    r"Weight ?Watchers",
+    r"Celtic ?Bank",
+    r"Simply ?Money",
+    r"(C|K)al ?sh(i|e)", # Kalshi
+    r"Air ?Med",
+    r"Good ?and ?the ?Beautiful'?s ?Reading",
+    r"P(er|urr)fect ?Bistro",
     r"get everyone home safely",
     r"beat any price",
     r"sell more so you save more",
@@ -81,39 +81,77 @@ _CASE_INSENS_PATTS = [
 
     # VPN ads because everyone has them
     r"(Nord|Express) ?VPN",
-    r"NordSteller",
+    r"Nord ?Steller",
 
-    r"Worth Recruiting",
-    r"Posit Connect",
-    r"TalkPython",
-    r"Squarespace",
+    r"Worth ?Recruiting",
+    r"Posit ?Connect",
+    r"Talk ?Python",
+    r"Square ?Space",
     r"Delete ?Me",
     r"KRCS", # Some Apple retailer
     r"(?<!A)Udacity", # Udacity, not audacity
-    r"SteamClock",
-    r"Zbiotics",
-    r"Jubilee Trading Co",
+    r"Steam ?Clock",
+    r"Z(ee)?(-| )?biotics",
+    r"Jubilee ?Trading ?Co",
     r"Mint ?Mobile",
-    r"Colligan",
-    r"Uber Eats",
-    r"Pepsi Prebiotic",
+    r"Col{1,2}igan",
+    r"Uber ?Eats",
+    r"Pepsi ?Prebiotic",
     r"Carvana",
     r"Ever ?Pass",
     r"Exclaimer",
-    r"State Farm",
+    r"State ?Farm",
     r"Lowe'?s",
-    r"Nespresso",
-    r"Factor Meals",
+    r"Nespres{1,2}o",
+    r"Factor ?Meals",
+    r"(Dr\.?|Doctor) (Urtka|Oetker)", # Dr. Oetker pizza
+    r"Dua? ?lux", # Dulux
+    r"Live ?Nation",
+    r"Cullen ?Jewelry",
+    r"Comm ?Bank ?Yellow",
+    r"Py ?Charm",
+    r"Auth0",
+    r"Fit ?Bud",
+    r"Ecamm?",
+    r"Vitally",
+    r"Investor'?s ?Podcast",
+    r"Lib ?syn",
+    r"Fire ?stone",
+    r"Slack ?Bot",
+    r"web ?healer",
+    r"counsel{1,2}ing ?tutor",
+    r"counsel{1,2}ing ?skills ?academy",
+    r"Reverie ?Power ?bed",
+    r"Host ?Financial",
+    r"Shopify",
+    r"Base ?Lane",
+    r"Chumba ?Casino",
+    r"Sprot{1,2} ?Money", # Sprott Money
+    r"Black ?Out ?Coffee",
+    r"Il ?Tut{1,2}o", # Il Tutto
+    r"Shop ?Beam",
+    r"Beam'?s ?Dream ?Powder",
+    r"Stop ?Box",
+    r"American ?Financing",
+    r"Helix ?Sleep",
+    r"Genu ?cel{1,2}",
+    r"(1|Fir)st ?(F|Ph)orm", # 1st Phorm
+    r"My ?Bookie",
+    r"Cocoa ?Beach",
+    r"Total ?Wine",
+    r"Ketone",
+    r"Ashley ?Madison",
+    r"Buy ?Ray ?Con",
+
 
     #Entertainment services--everything is called "plus" these days
     r"(MGM|Disney) ?(plus|\+)",
     r"Hulu",
-    r"Britbox",
-    r"RIPBOX", # mispronunciation of Britbox
+    r"(Brit|Rip) ?Box", # BritBox
 
     # Florida driver saftey
     r"isn't just a road, it's our workplace",
-    r"Target Zero Initiative",
+    r"Target ?Zero ?Initiative",
     r"This isn't just a road\.",
     r"It's our workplace\.",
     r"Slow down\.",
@@ -139,8 +177,18 @@ _CASE_INSENS_PATTS = [
     r"♪",
 
     # General Ad Language
+    r"patreon",
     r"brought to you by",
-    r"is sponsored by"
+    r"is sponsored by",
+    r"off your order",
+    r"with code",
+    r"use (the )?code",
+    r"at checkout",
+    r"take advantage of",
+    r"get started at",
+    r"these offers end",
+    r"exclusive offer",
+    r"shop now at"
 
 ]
 
@@ -167,6 +215,7 @@ _CASE_AD_PATTS = [
     r"Oracle",
     r"Ring",
     r"Centuries",
+    r"Whole Foods", # Could be talking about "whole foods" (think MAHA movement)
 
     r"Zin", # nicotine patch
     r"Warning\.", # From tobacco ads
