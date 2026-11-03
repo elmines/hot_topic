@@ -2,16 +2,20 @@ import re
 
 _CASE_INSENS_PATTS = [
     # Websites
-    r"(dot|\.) ?(com|edu|org|net|fm|au|me|io)",
+    r"(dot|\.) ?(com|edu|org|net|fm|au|me|io|us)",
     # Toll-free numbers (still a thing apparently)
     r"1-800",
+    r"one(-| )eight(-| )hundred",
 
     # University ads
     r"rasmussen", # Too aggressive?
     r"Arizona State",
+    r"Gortney ?Institute",
+    r"Ottawa ?University",
+    r"Western ?Governor'?s ?University",
 
     # Coke Florida
-    r"Coke Florida",
+    r"Coke ?Florida",
     r"Ice(-| )cold Coca(-| )Cola and football",
     r"championship combo",
 
@@ -20,8 +24,8 @@ _CASE_INSENS_PATTS = [
     r"gainesville",
 
     # Local Businesses
-    r"Spurrier's Gri(t|d)(-| )?Iron Grill",
-    r"(Original|All)(-| )American Kitchen",
+    r"Spur{1,2}ier'?s ?Gri(t|d)(-| )?Iron ?Grill",
+    r"(Original|All)(-| )?American ?Kitchen",
     r"(V|B|Bee)(-| )Pizza",
     r"Chevrolet GMC",
     r"GMC Sierra",
@@ -50,6 +54,42 @@ _CASE_INSENS_PATTS = [
     r"Offering the products you need all in one place",
     r"Azure ?Well",
     r"And with Fin, we've built the number one AI agent for customer service",
+    r"Tex Heart ?stone",
+
+    # Legoland
+    r"Lego ?Galaxy",
+    r"Lego ?land",
+    r"Galact(i|a) ?Coaster",
+
+
+    r"Net ?Credit",
+    r"Wendy'?s",
+    r"Turbo ?Tax",
+    r"Zaxby'?s",
+    # Thrive Causmetics
+    r"Thrive ?Cosmetics",
+    r"Causmetics",
+    r"Go ?Fund ?Me",
+
+    # Insurance
+    r"Geico",
+    r"Progressive Casualty",
+    r"Florida ?Blue?",
+
+    r"Camellia",
+    r"Blue ?Plate ? Mayo",
+    r"Ralph'?s ?on ?the ?Park",
+    r"Patriot ?Mobile",
+    r"Washable ?Sofa",
+    r"Pure ?Talk",
+    r"Life ?Lock",
+    r"Legacy ?Box",
+    r"Get ?Sunday",
+    r"Crocket{1,2} ?Coffee",
+    r"Meaingful ?Beauty",
+    r"Spin ?Quest",
+    r"Modo ?Casino",
+    r"Travel ?Texas",
 
     # Some Amazon ad campaign
     r"Know a local business that will make a great partner",
@@ -93,10 +133,10 @@ _CASE_INSENS_PATTS = [
     r"Steam ?Clock",
     r"Z(ee)?(-| )?biotics",
     r"Jubilee ?Trading ?Co",
-    r"Mint ?Mobile",
+    r"Mint(-| )?Mobile",
     r"Col{1,2}igan",
     r"Uber ?Eats",
-    r"Pepsi ?Prebiotic",
+    r"Pepsi",
     r"Carvana",
     r"Ever ?Pass",
     r"Exclaimer",
@@ -142,12 +182,15 @@ _CASE_INSENS_PATTS = [
     r"Ketone",
     r"Ashley ?Madison",
     r"Buy ?Ray ?Con",
-
+    r"American ?Airlines",
+    r"US ?Bank",
+    r"Topo ?Chico",
 
     #Entertainment services--everything is called "plus" these days
     r"(MGM|Disney) ?(plus|\+)",
     r"Hulu",
     r"(Brit|Rip) ?Box", # BritBox
+    r"(Z|X)umo ?Play",
 
     # Florida driver saftey
     r"isn't just a road, it's our workplace",
@@ -188,15 +231,12 @@ _CASE_INSENS_PATTS = [
     r"get started at",
     r"these offers end",
     r"exclusive offer",
-    r"shop now at"
+    r"shop now at",
 
 ]
 
 _CASE_AD_PATTS = [
-    r"American Airlines",
-    r"US Bank", # Too short 
     r"Work in Progress",
-    r"Topo Chico",
     r"Vanta", # Case-sensitive because it could be part of a larger word
     r"ASU",   # Same goes for an acronmy
     r"On Deck",
@@ -216,6 +256,7 @@ _CASE_AD_PATTS = [
     r"Ring",
     r"Centuries",
     r"Whole Foods", # Could be talking about "whole foods" (think MAHA movement)
+    r"Progressive", # Casualty Insurance Company
 
     r"Zin", # nicotine patch
     r"Warning\.", # From tobacco ads
