@@ -29,13 +29,13 @@ def write_code(out_path, bash_code):
     chmodx(out_path)
 
 
-def parse_args():
+def parse_args(repo_dir):
     parser = argparse.ArgumentParser(
         description="Generate balanced Slurm scripts for ad_prompt jobs."
     )
-    parser.add_argument("--root", default=Path("out/whisper_segmented"), type=Path,
+    parser.add_argument("--root", default=repo_dir / "out" / "whisper_segmented", type=Path,
                         help="Root directory containing transcript CSV files")
-    parser.add_argument("--out", default=Path("out/ad_spans"), type=Path,
+    parser.add_argument("--out", default=repo_dir / "out" / "ad_spans", type=Path,
                         help="Directory for ad span JSON outputs")
     parser.add_argument("-n", type=int, required=True,
                         help="Number of Slurm jobs to generate")
@@ -131,13 +131,13 @@ echo Writing vllm output to $vllm_log_path
 
 
 def main():
-    args = parse_args()
+    repo_dir = Path(__file__).resolve().parent.parent
+    args = parse_args(repo_dir)
     if args.n <= 0:
         raise SystemExit("-n must be a positive integer")
 
-    repo_dir = Path(__file__).resolve().parent
-    root = args.root.expanduser().resolve()
-    output = args.out.expanduser().resolve()
+    root = (repo_dir / args.root if not args.root.is_absolute() else args.root).expanduser().resolve()
+    output = (repo_dir / args.out if not args.out.is_absolute() else args.out).expanduser().resolve()
     if not root.is_dir():
         raise SystemExit(f"root does not exist or is not a directory: {root}")
     if output == root or output.is_relative_to(root) or root.is_relative_to(output):

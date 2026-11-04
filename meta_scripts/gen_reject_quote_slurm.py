@@ -95,33 +95,33 @@ echo Writing vllm output to $vllm_log_path
 """
 
 
-def parse_args():
+def parse_args(repo_dir):
     parser = argparse.ArgumentParser(description="Generate Slurm scripts for reject_quote jobs.")
     parser.add_argument(
-        "--root", default=Path("out/whisper_segmented"), type=Path,
+        "--root", default=repo_dir / "out" / "whisper_segmented", type=Path,
         help="Root directory for transcript paths in the input CSVs",
     )
     parser.add_argument(
-        "--quotes-root", default=Path("out"), type=Path,
+        "--quotes-root", default=repo_dir / "out", type=Path,
         help="Root directory containing generated topic quote CSVs",
     )
     parser.add_argument(
-        "--ad-spans", default=Path("out/ad_spans"), type=Path,
+        "--ad-spans", default=repo_dir / "out" / "ad_spans", type=Path,
         help="Directory containing ad-span JSON files",
     )
     return parser.parse_args()
 
 
 def main():
-    args = parse_args()
-    repo_dir = Path(__file__).resolve().parent
-    transcript_root = args.root.expanduser().resolve()
+    repo_dir = Path(__file__).resolve().parent.parent
+    args = parse_args(repo_dir)
+    transcript_root = (repo_dir / args.root if not args.root.is_absolute() else args.root).expanduser().resolve()
     if not transcript_root.is_dir():
         raise SystemExit(f"transcript root does not exist or is not a directory: {transcript_root}")
-    quotes_root = args.quotes_root.expanduser().resolve()
+    quotes_root = (repo_dir / args.quotes_root if not args.quotes_root.is_absolute() else args.quotes_root).expanduser().resolve()
     if not quotes_root.is_dir():
         raise SystemExit(f"quotes root does not exist or is not a directory: {quotes_root}")
-    ad_spans = args.ad_spans.expanduser().resolve()
+    ad_spans = (repo_dir / args.ad_spans if not args.ad_spans.is_absolute() else args.ad_spans).expanduser().resolve()
     if not ad_spans.is_dir():
         raise SystemExit(f"ad-spans directory does not exist or is not a directory: {ad_spans}")
     config = load_config(repo_dir)

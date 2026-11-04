@@ -27,7 +27,7 @@ def write_code(out_path, bash_code):
     chmodx(out_path)
 
 
-def parse_args():
+def parse_args(repo_dir):
     parser = argparse.ArgumentParser(
         description="Generate balanced Slurm scripts for line_score jobs."
     )
@@ -116,13 +116,13 @@ pwd
 
 
 def main():
-    args = parse_args()
+    repo_dir = Path(__file__).resolve().parent.parent
+    args = parse_args(repo_dir)
     if args.num_jobs <= 0:
         raise SystemExit("num_jobs must be a positive integer")
 
-    repo_dir = Path(__file__).resolve().parent
-    root = args.root.expanduser().resolve()
-    topics = args.topics.expanduser().resolve()
+    root = (repo_dir / args.root if not args.root.is_absolute() else args.root).expanduser().resolve()
+    topics = (repo_dir / args.topics if not args.topics.is_absolute() else args.topics).expanduser().resolve()
     if not root.is_dir():
         raise SystemExit(f"root does not exist or is not a directory: {root}")
     if not topics.is_file():
