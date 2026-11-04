@@ -162,7 +162,7 @@ _CASE_INSENS_PATTS = [
     r"Py ?Charm",
     r"Auth0",
     r"Fit ?Bud",
-    r"Ecamm?",
+    r"Ecamm", # Require both m's. Otherwise we catch words like 'became'
     r"Vitally",
     r"Investor'?s ?Podcast",
     r"Lib ?syn",
@@ -189,7 +189,9 @@ _CASE_INSENS_PATTS = [
     r"My ?Bookie",
     r"Cocoa ?Beach",
     r"Total ?Wine",
-    r"Ketone",
+
+    # r"Ketone", # Too many diet-podcasters talking about this
+
     r"Ashley ?Madison",
     r"Buy ?Ray ?Con",
     r"American ?Airlines",
@@ -260,7 +262,7 @@ _CASE_AD_PATTS = [
     r"Vanta", # Case-sensitive because it could be part of a larger word
     r"ASU",   # Same goes for an acronmy
     r"On Deck",
-    r"Found",
+    # r"Found", # Too-broad coverage in review
     r"The Pizza", # Mis-transcription of "V Pizza"
     r"Alpha", # For alpha insurance
     r"ALFA",
