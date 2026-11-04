@@ -2,17 +2,18 @@ import re
 
 _CASE_INSENS_PATTS = [
     # Websites
-    r"(dot|\.) ?(com|edu|org|net|fm|au|me|io|us)",
+    r"(dot|\.)(-| )?(com|edu|org|net|fm|au|me|io|us)",
     # Toll-free numbers (still a thing apparently)
     r"1-800",
     r"one(-| )eight(-| )hundred",
 
     # University ads
-    r"rasmussen", # Too aggressive?
-    r"Arizona State",
+    r"Rasmussen",
+    r"Arizona ?State",
     r"Gortney ?Institute",
     r"Ottawa ?University",
     r"Western ?Governor'?s ?University",
+    r"fully online master", # a lot of schools advertise this
 
     # Coke Florida
     r"Coke ?Florida",
@@ -22,6 +23,7 @@ _CASE_INSENS_PATTS = [
     # Locality Name
     r"alachua",
     r"gainesville",
+    r"tuscaloosa",
 
     # Local Businesses
     r"Spur{1,2}ier'?s ?Gri(t|d)(-| )?Iron ?Grill",
@@ -55,6 +57,8 @@ _CASE_INSENS_PATTS = [
     r"Azure ?Well",
     r"And with Fin, we've built the number one AI agent for customer service",
     r"Tex Heart ?stone",
+    r"Comcast",
+    r"My ?Figs",
 
     # Legoland
     r"Lego ?Galaxy",
@@ -66,7 +70,7 @@ _CASE_INSENS_PATTS = [
     r"Wendy'?s",
     r"Turbo ?Tax",
     r"Zaxby'?s",
-    # Thrive Causmetics
+    # Thrive Causemetics
     r"Thrive ?Cosmetics",
     r"Causemetics",
     r"Go ?Fund ?Me",
@@ -94,6 +98,8 @@ _CASE_INSENS_PATTS = [
     # Some Amazon ad campaign
     r"Know a local business that will make a great partner",
     r"A local coffee shop owner, florist, automotive shop, dry cleaner, you name it",
+    r"refer a business today",
+    r"wants to partner with your business",
     r"are sold near you",
 
     # American Express
@@ -108,7 +114,11 @@ _CASE_INSENS_PATTS = [
     r"Weight ?Watchers",
     r"Celtic ?Bank",
     r"Simply ?Money",
-    r"(C|K)al ?sh(i|e)", # Kalshi
+
+    # Kalshi
+    r"(C|K)al ?sh(i|e)",
+    r"trade on anything",
+
     r"Air ?Med",
     r"Good ?and ?the ?Beautiful'?s ?Reading",
     r"P(er|urr)fect ?Bistro",
@@ -185,12 +195,18 @@ _CASE_INSENS_PATTS = [
     r"American ?Airlines",
     r"US ?Bank",
     r"Topo ?Chico",
+    r"Colgate", # Colgate toothepaste ads
+    r"Anabase", # Furnitue brand
+    r"Neapolitan pizza",
 
     #Entertainment services--everything is called "plus" these days
     r"(MGM|Disney) ?(plus|\+)",
     r"Hulu",
     r"(Brit|Rip) ?Box", # BritBox
     r"(Z|X)umo ?Play",
+
+    # Knoxville ads
+    r"calling the curious",
 
     # Florida driver saftey
     r"isn't just a road, it's our workplace",
@@ -212,7 +228,10 @@ _CASE_INSENS_PATTS = [
     r"reminds you that April is Child Abuse Prevention Month",
 
     # Ads for other podcasts
+    r"iHeart",
     r"guests on my new podcast",
+    r"listen to us (on|at)",
+    r"subscribe and share",
     r"(wherever|anywhere|everywhere) you (get|find) your podcast",
 
     # music (starting with a bracket or paren)
@@ -232,6 +251,7 @@ _CASE_INSENS_PATTS = [
     r"these offers end",
     r"exclusive offer",
     r"shop now at",
+    r"full terms at",
 
 ]
 
@@ -243,6 +263,9 @@ _CASE_AD_PATTS = [
     r"Found",
     r"The Pizza", # Mis-transcription of "V Pizza"
     r"Alpha", # For alpha insurance
+    r"ALFA",
+    r"ALPHA",
+
     r"Lem is",
     r"Burrito", # capitalized--probably ad for burrito factory
 
@@ -257,6 +280,7 @@ _CASE_AD_PATTS = [
     r"Centuries",
     r"Whole Foods", # Could be talking about "whole foods" (think MAHA movement)
     r"Progressive", # Casualty Insurance Company
+    r"Steadily",    # Steadily Insurance
 
     r"Zin", # nicotine patch
     r"Warning\.", # From tobacco ads
