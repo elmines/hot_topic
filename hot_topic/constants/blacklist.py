@@ -68,7 +68,7 @@ _CASE_INSENS_PATTS = [
     r"Zaxby'?s",
     # Thrive Causmetics
     r"Thrive ?Cosmetics",
-    r"Causmetics",
+    r"Causemetics",
     r"Go ?Fund ?Me",
 
     # Insurance
@@ -86,7 +86,7 @@ _CASE_INSENS_PATTS = [
     r"Legacy ?Box",
     r"Get ?Sunday",
     r"Crocket{1,2} ?Coffee",
-    r"Meaingful ?Beauty",
+    r"Meaningful ?Beauty",
     r"Spin ?Quest",
     r"Modo ?Casino",
     r"Travel ?Texas",
