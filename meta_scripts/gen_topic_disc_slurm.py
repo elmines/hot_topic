@@ -95,7 +95,7 @@ echo Writing vllm output to $vllm_log_path
 
 
 def main():
-	repo_dir = Path(__file__).resolve().parent
+	repo_dir = Path(__file__).resolve().parent.parent
 	config = load_config(repo_dir)
 	partitions = {
 		"rtx": config["rtx_partition"],

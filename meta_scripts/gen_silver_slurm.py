@@ -69,7 +69,7 @@ pwd
 
 
 def main():
-	repo_dir = Path(__file__).resolve().parent
+	repo_dir = Path(__file__).resolve().parent.parent
 	config = load_config(repo_dir)
 	script_path = repo_dir / "slurm_scripts" / f"{JOB_NAME}.sh"
 	script_path.parent.mkdir(parents=True, exist_ok=True)

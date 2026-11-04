@@ -282,8 +282,11 @@ def main():
     if args.real_time_factor <= 0:
         raise SystemExit("real-time-factor must be a positive number")
 
-    repo_dir = Path(__file__).resolve().parent
-    input_dir = Path(args.input_dir).expanduser().resolve()
+    repo_dir = Path(__file__).resolve().parent.parent
+    input_dir = Path(args.input_dir).expanduser()
+    if not input_dir.is_absolute():
+        input_dir = repo_dir / input_dir
+    input_dir = input_dir.resolve()
     if not input_dir.exists() or not input_dir.is_dir():
         raise SystemExit(f"input_dir does not exist or is not a directory: {input_dir}")
 
