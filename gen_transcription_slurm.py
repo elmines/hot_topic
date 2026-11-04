@@ -287,7 +287,7 @@ def main():
     if not input_dir.exists() or not input_dir.is_dir():
         raise SystemExit(f"input_dir does not exist or is not a directory: {input_dir}")
 
-    out_dir = repo_dir / "transcribe_out"
+    out_dir = repo_dir / "out" / "whisper_segmented"
     slurm_dir = repo_dir / "slurm_scripts"
     out_dir.mkdir(parents=True, exist_ok=True)
     slurm_dir.mkdir(parents=True, exist_ok=True)
@@ -372,5 +372,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
