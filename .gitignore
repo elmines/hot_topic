@@ -29,8 +29,7 @@ slurm_scripts/**/*.err
 *.png
 *journal
 *sqlite*
-transcribe_out/*
-!transcribe_out/.gitkeep
+out/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
