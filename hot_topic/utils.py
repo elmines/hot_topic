@@ -115,7 +115,7 @@ class ContextExtractor:
                     len(rows),
                 )
                 rows = drop_ad_span_lines(rows, spans, transcript_path)
-            self.__episode_texts[episode_path] = combine_rows(preprocess(rows))
+            self.__episode_texts[episode_path] = combine_rows(rows)
         text = self.__episode_texts[episode_path]
         quote_text = row['episode_quote']
         quote_start = text.index(quote_text)
