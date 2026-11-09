@@ -108,7 +108,7 @@ def plot_ad_spans(transcript_csv, labels, timestamp_unit="auto"):
 		hover_text = f"ad span [{start}, {end})"
 		if span["reason"]:
 			hover_text += f"<br>reason: {span['reason']}"
-		span_end = ends[end - 1] / 60.0
+		span_end = ends[end if start == end else end - 1] / 60.0
 		figure.add_trace(
 			go.Scatter(
 				x=[minutes[start], minutes[start], span_end, span_end, minutes[start]],

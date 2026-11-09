@@ -35,6 +35,7 @@ def _process_quote(task):
         episode_id,
         quote_row["topic"],
         _EXTRACT_QUOTE_CONTEXT(quote_row),
+        quote_row['episode_quote'],
         quote_row["author"],
     ]
     row.extend(row_decisions)
@@ -133,7 +134,7 @@ def tally(
         decisions.append(model_decisions)
         explanations.append(model_explanations)
 
-    header = ["show_id", "episode_id", "topic", "contextualized_quote", "author"]
+    header = ["show_id", "episode_id", "topic", "contextualized_quote", "episode_quote", "author"]
     header.extend(f"{name}--rejected" for name in model_names)
     header.append("combined--rejected")
     header.extend(f"{name}--explanation" for name in model_names)

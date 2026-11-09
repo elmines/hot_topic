@@ -52,17 +52,17 @@ AD_SPAN_SCHEMA = {
     "additionalProperties": False,
 }
 
-SYSTEM_PROMPT = """You identify advertising in podcast transcripts.
+SYSTEM_PROMPT = """You identify advertising and non-speech audio in podcast transcripts.
 
 Return one JSON object matching the provided schema, with a `spans` array. Each span must contain integer `start` and `end` fields and may contain a short `reason` field.
-Spans use closed intervals: `start` and `end` are both inclusive. Indices refer to the 0-based line numbers supplied in the transcript.
+Spans should cover advertising non-speech audio (transcribed music, song lyrics, sound effects, etc.). Spans use closed intervals: `start` and `end` are both inclusive. Indices refer to the 0-based line numbers supplied in the transcript.
 """
 
-USER_PROMPT = """Read the transcript below and identify every contiguous range of transcript lines that is advertising. Include sponsor reads, product or service promotions, affiliate messages, fundraising or membership appeals, and promotions for the podcast or its network. Do not label ordinary discussion of a product, news, or a guest's work unless it is promotional.
+USER_PROMPT = """Read the transcript below and identify every contiguous range of transcript lines that should be filtered out because it is advertising or non-human audio. Include sponsor reads, product or service promotions, affiliate messages, fundraising or membership appeals, promotions for the podcast or its network, transcribed music or song lyrics, and sound effects. Do not label ordinary human speech, discussion of a product, news, or a guest's work unless it is promotional.
 
-Return JSON matching the schema. Use closed spans: `start` is the first advertising line and `end` is the last advertising line. For example, {"start": 0, "end": 2} labels lines 0, 1, and 2.
+Return JSON matching the schema. Use closed spans: `start` is the first line to filter and `end` is the last line to filter. For example, {"start": 0, "end": 2} labels lines 0, 1, and 2.
 
-Use the supplied line indices exactly. If there is no advertising, return {"spans": []}. Do not include any text outside the JSON object.
+Use the supplied line indices exactly. If there is no advertising, music, or sound effects, return {"spans": []}. Do not include any text outside the JSON object.
 
 TRANSCRIPT:
 """

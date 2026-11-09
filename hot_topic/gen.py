@@ -35,7 +35,6 @@ from .utils import (
     combine_rows,
     drop_ad_span_lines,
     normalize_model_name,
-    preprocess,
 )
 
 CHECKPOINT_FILENAME = "processed_topics.json"
@@ -205,7 +204,7 @@ def load_ad_spans(transcript_path, input_root, spans_root, line_count):
 
 
 def prepare_transcript(rows, spans, path=None):
-    return list(preprocess(drop_ad_span_lines(rows, spans, path)))
+    return list(drop_ad_span_lines(rows, spans, path))
 
 
 def parse_topics_payload(text, extract_answer=lambda text: text):
