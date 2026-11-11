@@ -7,7 +7,11 @@ from pathlib import Path
 import re
 import subprocess
 
+from tqdm import tqdm
+
 DECIMAL_FORMAT = "{:.3f}"
+
+BAD_LEN_SENTINEL = "filesize and duration do not match"
 
 def probe_audio_file(audio_path):
     result = subprocess.run(
@@ -25,12 +29,16 @@ def probe_audio_file(audio_path):
     minutes = int(match.group(2))
     seconds = float(match.group(3))
     total_seconds = hours * 3600 + minutes * 60 + seconds
+    if BAD_LEN_SENTINEL in stderr_text:
+        print(f"{audio_path} has incorrect duration metadata", file=sys.stderr)
     # Want millis
     return total_seconds * 1000
 
 MUSIC_PATT = re.compile(
     r"♪|"
-    r"[\[(](soft|music|upbeat|singing|rock|sirens wailing)",
+    r"[\[(](music|foreign|upbeat|singing|rock|sirens wailing|speaking|applause|blank[ _]audio)|"
+    r'\[ silence \]|'
+    r"(music|foreign language)[\]\)]",
     re.IGNORECASE
 )
 
@@ -66,7 +74,6 @@ def trans_stats(transcript_path, audio_path, repeat_thresh = 15000):
                 replaced_millis += seg_dur
             seg_timestamp = row['start']
             seg_index = i
-
     return {
         "transcript": transcript_path,
         "percent_replaced": DECIMAL_FORMAT.format(replaced_millis / trans_size),
@@ -82,6 +89,6 @@ if __name__ == "__main__":
     writer = csv.DictWriter(sys.stdout, fieldnames=["percent_replaced", "percent_added", "transcript"])
     writer.writeheader()
     # transcript_paths = ["out/whisper_segmented/5951054/5951054_00205.mp3.csv"]
-    for trans_path in map(Path, transcript_paths):
+    for trans_path in map(Path, tqdm(transcript_paths)):
         audio_path = str(audio_root / trans_path.relative_to(trans_root)).replace('.csv', '')
         writer.writerow(trans_stats(trans_path, audio_path))
