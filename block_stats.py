@@ -10,15 +10,12 @@ import subprocess
 DECIMAL_FORMAT = "{:.3f}"
 
 def probe_audio_file(audio_path):
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-i", str(audio_path)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-    except Exception:
-        return None
+    result = subprocess.run(
+        ["ffmpeg", "-i", str(audio_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
 
     stderr_text = result.stderr.decode("utf-8", errors="replace")
     duration_match = re.search(r"Duration:\s*(\d+:\d+:\d+(?:\.\d+)?)", stderr_text)
@@ -33,7 +30,7 @@ def probe_audio_file(audio_path):
 
 MUSIC_PATT = re.compile(
     r"♪|"
-    r"[\[(](music|upbeat|singing|rock|sirens wailing)",
+    r"[\[(](soft|music|upbeat|singing|rock|sirens wailing)",
     re.IGNORECASE
 )
 
