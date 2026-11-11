@@ -65,14 +65,18 @@ def trans_stats(transcript_path, audio_path, repeat_thresh = 15000):
     appended_millis = max(0, rows[-1]['end'] - trans_size)
     replaced_millis = 0
     music_millis = 0
+    skipped_millis = 0
 
     seg_timestamp = 0
     seg_index = 0
+    last_end = rows[0]['end']
 
     for i, row in enumerate(rows[1:], start=1):
         if row['start'] >= trans_size:
             break
+        skipped_millis += row['start'] - last_end
         row['end'] = min(row['end'], trans_size)
+        last_end = row['end']
         if row['text'] != (prev_text := rows[i-1]['text']):
             # Index check accounts for a single line being longer in duration than repeat_thresh
             # Music check ignores musical data (assume those are not transcription errors)
@@ -85,9 +89,10 @@ def trans_stats(transcript_path, audio_path, repeat_thresh = 15000):
             seg_index = i
     rdict.update({
         "valid_audio": True,
+        "percent_skipped": DECIMAL_FORMAT.format(skipped_millis / trans_size),
         "percent_replaced_text": DECIMAL_FORMAT.format(replaced_millis / trans_size),
         "percent_replaced_music": DECIMAL_FORMAT.format(music_millis / trans_size),
-        "percent_added": DECIMAL_FORMAT.format(appended_millis / trans_size)
+        "percent_appended": DECIMAL_FORMAT.format(appended_millis / trans_size)
     })
     return rdict
 
@@ -97,9 +102,9 @@ if __name__ == "__main__":
     audio_root = Path("/blue/bonniejdorr/ethanlmines/PodcastDataset/audio/")
     transcript_paths = glob.glob( str(trans_root / "*/*.csv") )
 
-    writer = csv.DictWriter(sys.stdout, fieldnames=["valid_audio", "percent_replaced_text", "percent_replaced_music", "percent_added", "transcript"])
+    writer = csv.DictWriter(sys.stdout, fieldnames=["valid_audio", "percent_skipped", "percent_replaced_text", "percent_replaced_music", "percent_appended", "transcript"])
     writer.writeheader()
-    # transcript_paths = ["out/whisper_segmented/711095/711095_00008.mp3.csv"]
+    # transcript_paths = ["out/whisper_segmented/5614604/5614604_00043.mp3.csv"]
     for trans_path in map(Path, tqdm(transcript_paths)):
         audio_path = str(audio_root / trans_path.relative_to(trans_root)).replace('.csv', '')
         writer.writerow(trans_stats(trans_path, audio_path))
